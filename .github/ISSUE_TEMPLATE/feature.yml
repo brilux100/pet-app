@@ -1,0 +1,36 @@
+name: PupilCare feature
+description: Plan a user-facing product capability
+title: "[Feature]: "
+labels: []
+body:
+  - type: textarea
+    id: user_need
+    attributes:
+      label: User need
+      description: What real pet-owner problem does this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Expected outcome
+      description: What should the owner be able to complete?
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: List observable completion conditions.
+    validations:
+      required: true
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Pilot priority
+      options:
+        - P0 — required for Tricity pilot
+        - P1 — next after pilot
+        - P2 — later expansion
+    validations:
+      required: true
