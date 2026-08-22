@@ -153,22 +153,31 @@ alter table public.consultations enable row level security;
 alter table public.subscriptions enable row level security;
 alter table public.ai_usage_monthly enable row level security;
 
+drop policy if exists "profiles_own_rows" on public.profiles;
 create policy "profiles_own_rows" on public.profiles for all
 using ((select auth.uid()) = id) with check ((select auth.uid()) = id);
+drop policy if exists "pets_own_rows" on public.pets;
 create policy "pets_own_rows" on public.pets for all
 using ((select auth.uid()) = owner_id) with check ((select auth.uid()) = owner_id);
+drop policy if exists "vaccines_own_rows" on public.vaccines;
 create policy "vaccines_own_rows" on public.vaccines for all
 using ((select auth.uid()) = owner_id) with check ((select auth.uid()) = owner_id);
+drop policy if exists "visits_own_rows" on public.visits;
 create policy "visits_own_rows" on public.visits for all
 using ((select auth.uid()) = owner_id) with check ((select auth.uid()) = owner_id);
+drop policy if exists "documents_own_rows" on public.documents;
 create policy "documents_own_rows" on public.documents for all
 using ((select auth.uid()) = owner_id) with check ((select auth.uid()) = owner_id);
+drop policy if exists "bookings_own_rows" on public.bookings;
 create policy "bookings_own_rows" on public.bookings for all
 using ((select auth.uid()) = owner_id) with check ((select auth.uid()) = owner_id);
+drop policy if exists "consultations_own_rows" on public.consultations;
 create policy "consultations_own_rows" on public.consultations for all
 using ((select auth.uid()) = owner_id) with check ((select auth.uid()) = owner_id);
+drop policy if exists "subscriptions_own_rows" on public.subscriptions;
 create policy "subscriptions_own_rows" on public.subscriptions for select
 using ((select auth.uid()) = owner_id);
+drop policy if exists "ai_usage_own_rows" on public.ai_usage_monthly;
 create policy "ai_usage_own_rows" on public.ai_usage_monthly for select
 using ((select auth.uid()) = owner_id);
 
