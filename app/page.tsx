@@ -1,5 +1,5 @@
-import PupilCareApp from "./pupilcare-app";
+import PupilCareAuth from "./pupilcare-auth";
 
 export default function Home() {
-  return <PupilCareApp />;
+  return <PupilCareAuth />;
 }

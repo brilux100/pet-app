@@ -17,15 +17,16 @@ Trójmiasta.
 - bezpłatne ostrzeżenia bezpieczeństwa również po wykorzystaniu limitu,
 - własny przepływ Vet 24/7: wywiad, potwierdzenie płatności, przekazanie danych,
   rozmowa wideo i zapis podsumowania,
-- jedna konsultacja Vet 24/7 miesięcznie w planie Premium,
+- Vet 24/7 za 89,99 zł albo 49,99 zł w planie Premium,
 - przejście do rezerwacji stacjonarnej przez WetTermin,
 - psy i koty jako główne gatunki oraz rozszerzalny wybór innych zwierząt,
-- zapis danych demonstracyjnych w pamięci przeglądarki.
+- logowanie przez e-mail, Google, Facebook i Apple po podłączeniu Supabase,
+- trwała baza profili i historii z politykami Row Level Security.
 
 ## Model biznesowy
 
-- prowizja od zrealizowanych usług,
-- abonament PupilCare Premium,
+- opłata serwisowa 9,99 zł za rezerwację lub 4,99 zł w Premium,
+- abonament PupilCare Premium za 39,99 zł miesięcznie,
 - rabaty i polecenia produktów partnerów.
 
 ## Integracje
@@ -46,8 +47,19 @@ Wersję produkcyjną sprawdzisz poleceniem:
 
     npm run build
 
+## Supabase
+
+1. Utwórz projekt Supabase.
+2. Uruchom migrację `supabase/migrations/202608220001_pupilcare_core.sql`.
+3. Włącz logowanie e-mail oraz wybrane integracje Google, Facebook i Apple.
+4. Ustaw w środowisku aplikacji `SUPABASE_URL` i `SUPABASE_ANON_KEY`.
+
+Klucz `SUPABASE_SERVICE_ROLE_KEY` nie może być używany w przeglądarce ani
+zapisywany w repozytorium. Bez konfiguracji Supabase aplikacja udostępnia
+bezpieczną wersję demonstracyjną.
+
 ## Stack
 
-React 19, TypeScript, Vinext/Vite i CSS. Projekt jest przygotowany do kolejnego
-etapu: logowania, trwałej bazy danych, prawdziwego API AI, płatności i transmisji
-wideo z lekarzem PupilCare.
+React 19, TypeScript, Vinext/Vite, Supabase Auth/Postgres i CSS. Kolejne
+integracje to produkcyjne API AI, Stripe oraz własna transmisja wideo z lekarzem
+PupilCare.

@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 type View =
   | "home"
@@ -56,6 +57,13 @@ type Pet = {
   vaccines: Vaccine[];
   visits: Visit[];
   documents: PetDocument[];
+};
+
+type PupilCareAppProps = {
+  supabase?: SupabaseClient;
+  userId?: string;
+  userEmail?: string;
+  onSignOut?: () => void | Promise<void>;
 };
 
 type ChatMessage = {
@@ -236,12 +244,55 @@ function formatDate(date: string) {
   }).format(new Date(date + "T12:00:00"));
 }
 
-export default function PupilCareApp() {
+function petFromRow(row: Record<string, any>): Pet {
+  return {
+    id: String(row.id),
+    name: String(row.name),
+    species: String(row.species),
+    breed: String(row.breed || "Nie podano"),
+    age: String(row.age_label || "Nie podano"),
+    sex: String(row.sex || "Nie podano"),
+    weight: String(row.weight_label || "Nie podano"),
+    emoji: String(row.emoji || petEmoji(String(row.species))),
+    color: String(row.color || "#dff6ff"),
+    healthScore: Number(row.health_score || 72),
+    allergies: String(row.allergies || "Nie uzupełniono"),
+    medications: String(row.medications || "Nie uzupełniono"),
+    conditions: String(row.conditions || "Nie uzupełniono"),
+    vet: String(row.veterinarian || "Nie wybrano"),
+    vaccines: (row.vaccines || []).map((item: Record<string, any>) => ({
+      id: String(item.id),
+      name: String(item.name),
+      date: String(item.administered_on || ""),
+      nextDate: String(item.next_due_on || ""),
+      status: item.status === "soon" || item.status === "missing" ? item.status : "ok",
+    })),
+    visits: (row.visits || []).map((item: Record<string, any>) => ({
+      id: String(item.id),
+      title: String(item.title),
+      type: String(item.visit_type),
+      date: String(item.visit_date || ""),
+      time: String(item.visit_time || "").slice(0, 5),
+      place: String(item.place || ""),
+    })),
+    documents: (row.documents || []).map((item: Record<string, any>) => ({
+      id: String(item.id),
+      name: String(item.name),
+      kind: String(item.kind),
+      date: new Date(String(item.created_at)).toLocaleDateString("pl-PL"),
+    })),
+  };
+}
+
+export default function PupilCareApp({ supabase, userId, userEmail, onSignOut }: PupilCareAppProps = {}) {
+  const authenticated = Boolean(supabase && userId);
   const [view, setView] = useState<View>("home");
   const [modal, setModal] = useState<Modal>(null);
   const [mobileMenu, setMobileMenu] = useState(false);
-  const [pets, setPets] = useState<Pet[]>(demoPets);
+  const [pets, setPets] = useState<Pet[]>(authenticated ? [] : demoPets);
   const [activePetId, setActivePetId] = useState("bruno");
+  const [dataLoading, setDataLoading] = useState(authenticated);
+  const [dataError, setDataError] = useState("");
   const [chat, setChat] = useState<ChatMessage[]>([
     {
       id: "hello",
@@ -252,9 +303,9 @@ export default function PupilCareApp() {
   const [chatInput, setChatInput] = useState("");
   const [aiUsed, setAiUsed] = useState(0);
   const [isPremium, setIsPremium] = useState(false);
-  const [premiumVetUsed, setPremiumVetUsed] = useState(false);
 
   useEffect(() => {
+    if (authenticated) return;
     const saved = window.localStorage.getItem("pupilcare-pets-v1");
     if (!saved) return;
     try {
@@ -269,43 +320,76 @@ export default function PupilCareApp() {
     } catch {
       window.localStorage.removeItem("pupilcare-pets-v1");
     }
-  }, []);
+  }, [authenticated]);
 
   useEffect(() => {
+    if (authenticated) return;
     const account = window.localStorage.getItem("pupilcare-account-v1");
     if (!account) return;
     try {
       const parsed = JSON.parse(account) as {
         aiUsed?: number;
         isPremium?: boolean;
-        premiumVetUsed?: boolean;
       };
       const timer = window.setTimeout(() => {
         setAiUsed(parsed.aiUsed || 0);
         setIsPremium(Boolean(parsed.isPremium));
-        setPremiumVetUsed(Boolean(parsed.premiumVetUsed));
       }, 0);
       return () => window.clearTimeout(timer);
     } catch {
       window.localStorage.removeItem("pupilcare-account-v1");
     }
-  }, []);
+  }, [authenticated]);
 
   useEffect(() => {
+    if (!authenticated || !supabase || !userId) {
+      setDataLoading(false);
+      return;
+    }
+    let mounted = true;
+    async function loadAccount() {
+      setDataLoading(true);
+      setDataError("");
+      await supabase!.from("profiles").upsert(
+        { id: userId, email: userEmail ?? null },
+        { onConflict: "id" },
+      );
+      const [petsResult, profileResult] = await Promise.all([
+        supabase!.from("pets").select("*, vaccines(*), visits(*), documents(*)").order("created_at"),
+        supabase!.from("profiles").select("plan").eq("id", userId).maybeSingle(),
+      ]);
+      if (!mounted) return;
+      if (petsResult.error) {
+        setDataError("Nie udało się pobrać profili pupili. Sprawdź konfigurację bazy Supabase.");
+      } else {
+        const loaded = (petsResult.data || []).map((row) => petFromRow(row as Record<string, any>));
+        setPets(loaded);
+        if (loaded.length) setActivePetId(loaded[0].id);
+      }
+      setIsPremium(profileResult.data?.plan === "premium");
+      setDataLoading(false);
+    }
+    void loadAccount();
+    return () => { mounted = false; };
+  }, [authenticated, supabase, userEmail, userId]);
+
+  useEffect(() => {
+    if (authenticated) return;
     window.localStorage.setItem(
       "pupilcare-pets-v1",
       JSON.stringify({ pets, activePetId })
     );
-  }, [pets, activePetId]);
+  }, [pets, activePetId, authenticated]);
 
   useEffect(() => {
+    if (authenticated) return;
     window.localStorage.setItem(
       "pupilcare-account-v1",
-      JSON.stringify({ aiUsed, isPremium, premiumVetUsed })
+      JSON.stringify({ aiUsed, isPremium })
     );
-  }, [aiUsed, isPremium, premiumVetUsed]);
+  }, [aiUsed, isPremium, authenticated]);
 
-  const pet = pets.find((item) => item.id === activePetId) || pets[0];
+  const pet = pets.find((item) => item.id === activePetId) || pets[0] || demoPets[0];
   const nextVisit = useMemo(() => {
     return [...pet.visits].sort((a, b) => a.date.localeCompare(b.date))[0];
   }, [pet.visits]);
@@ -322,7 +406,7 @@ export default function PupilCareApp() {
     );
   };
 
-  const addPet = (event: FormEvent<HTMLFormElement>) => {
+  const addPet = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const species = String(data.get("species") || "Pies");
@@ -330,7 +414,7 @@ export default function PupilCareApp() {
     if (!name) return;
 
     const newPet: Pet = {
-      id: createId("pet"),
+      id: authenticated ? crypto.randomUUID() : createId("pet"),
       name,
       species,
       breed: String(data.get("breed") || "Nie podano"),
@@ -349,37 +433,90 @@ export default function PupilCareApp() {
       documents: [],
     };
 
+    if (authenticated && supabase && userId) {
+      const { error } = await supabase.from("pets").insert({
+        id: newPet.id,
+        owner_id: userId,
+        name: newPet.name,
+        species: newPet.species,
+        breed: newPet.breed,
+        age_label: newPet.age,
+        sex: newPet.sex,
+        weight_label: newPet.weight,
+        emoji: newPet.emoji,
+        color: newPet.color,
+        health_score: newPet.healthScore,
+        allergies: newPet.allergies,
+        medications: newPet.medications,
+        conditions: newPet.conditions,
+        veterinarian: newPet.vet,
+      });
+      if (error) {
+        setDataError("Nie udało się utworzyć profilu pupila.");
+        return;
+      }
+    }
+
     setPets((current) => [...current, newPet]);
     setActivePetId(newPet.id);
     setModal(null);
     setView("profile");
   };
 
-  const addVisit = (event: FormEvent<HTMLFormElement>) => {
+  const addVisit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const visit: Visit = {
-      id: createId("visit"),
+      id: authenticated ? crypto.randomUUID() : createId("visit"),
       title: String(data.get("title") || "Nowa wizyta"),
       type: String(data.get("type") || "Weterynarz"),
       date: String(data.get("date") || ""),
       time: String(data.get("time") || ""),
       place: String(data.get("place") || ""),
     };
+    if (authenticated && supabase && userId) {
+      const { error } = await supabase.from("visits").insert({
+        id: visit.id,
+        owner_id: userId,
+        pet_id: pet.id,
+        title: visit.title,
+        visit_type: visit.type,
+        visit_date: visit.date || null,
+        visit_time: visit.time || null,
+        place: visit.place,
+      });
+      if (error) {
+        setDataError("Nie udało się zapisać wizyty.");
+        return;
+      }
+    }
     updatePet({ ...pet, visits: [visit, ...pet.visits] });
     setModal(null);
     setView("calendar");
   };
 
-  const addDocument = (event: FormEvent<HTMLFormElement>) => {
+  const addDocument = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const document: PetDocument = {
-      id: createId("document"),
+      id: authenticated ? crypto.randomUUID() : createId("document"),
       name: String(data.get("name") || "Nowy dokument"),
       kind: String(data.get("kind") || "Inne"),
       date: new Date().toLocaleDateString("pl-PL"),
     };
+    if (authenticated && supabase && userId) {
+      const { error } = await supabase.from("documents").insert({
+        id: document.id,
+        owner_id: userId,
+        pet_id: pet.id,
+        name: document.name,
+        kind: document.kind,
+      });
+      if (error) {
+        setDataError("Nie udało się zapisać dokumentu.");
+        return;
+      }
+    }
     updatePet({ ...pet, documents: [document, ...pet.documents] });
     setModal(null);
     setView("documents");
@@ -448,8 +585,15 @@ export default function PupilCareApp() {
       place: summary,
     };
     updatePet({ ...pet, visits: [visit, ...pet.visits] });
-    if (isPremium) setPremiumVetUsed(true);
   };
+
+  if (dataLoading) {
+    return <main className="auth-loading"><span className="auth-loader" /><strong>Pobieramy profile pupili…</strong></main>;
+  }
+
+  if (authenticated && pets.length === 0) {
+    return <FirstPetSetup onSubmit={addPet} email={userEmail} error={dataError} onSignOut={onSignOut} />;
+  }
 
   return (
     <main className="app-shell">
@@ -510,9 +654,9 @@ export default function PupilCareApp() {
           <button onClick={() => changeView("vet24")}><Icon name="arrow" /></button>
         </div>
 
-        <button className="sidebar-user" onClick={() => setModal("premium")}>
-          <span className="user-avatar">M</span>
-          <div><strong>Moje konto</strong><span>{isPremium ? "PupilCare Premium" : "Plan bezpłatny"}</span></div>
+        <button className="sidebar-user" onClick={() => setModal("premium")} title={userEmail}>
+          <span className="user-avatar">{userEmail?.slice(0, 1).toUpperCase() || "M"}</span>
+          <div><strong>{userEmail ? "Moje konto" : "Wersja demo"}</strong><span>{isPremium ? "PupilCare Premium" : "Plan bezpłatny"}</span></div>
         </button>
       </aside>
 
@@ -525,6 +669,7 @@ export default function PupilCareApp() {
           </button>
           <div className="mobile-brand">PupilCare</div>
           <div className="top-actions">
+            {onSignOut && <button className="signout-button" onClick={() => void onSignOut()}>Wyloguj</button>}
             <button className="top-action" aria-label="Powiadomienia">
               <Icon name="bell" /><span className="notification-dot" />
             </button>
@@ -566,7 +711,6 @@ export default function PupilCareApp() {
           <Vet24
             pet={pet}
             isPremium={isPremium}
-            premiumVetUsed={premiumVetUsed}
             onFinish={finishVet24}
             onHistory={() => changeView("calendar")}
           />
@@ -654,21 +798,21 @@ export default function PupilCareApp() {
             </div>
             <div className="premium-benefits">
               <div><Icon name="spark" /><span><strong>Rozszerzony AI</strong><small>Więcej pytań i pełny kontekst historii</small></span></div>
-              <div><Icon name="cross" /><span><strong>1× Vet 24/7 miesięcznie</strong><small>Konsultacja wideo w cenie planu</small></span></div>
+              <div><Icon name="cross" /><span><strong>Vet 24/7 za 49,99 zł</strong><small>Zamiast 89,99 zł bez Premium</small></span></div>
               <div><Icon name="file" /><span><strong>Pełna historia</strong><small>Dokumenty, wizyty i zalecenia bez ograniczeń</small></span></div>
-              <div><Icon name="shop" /><span><strong>Rabaty partnerów</strong><small>Lepsze ceny usług i produktów</small></span></div>
+              <div><Icon name="shop" /><span><strong>Opłata serwisowa 4,99 zł</strong><small>Zamiast 9,99 zł za każdą rezerwację</small></span></div>
             </div>
             {!isPremium ? (
               <button
                 className="premium-activate"
-                onClick={() => { setIsPremium(true); setModal(null); }}
+                onClick={() => { if (!authenticated) setIsPremium(true); setModal(null); }}
               >
-                Włącz Premium w wersji demo <Icon name="arrow" />
+                Premium · 39,99 zł/mies. <Icon name="arrow" />
               </button>
             ) : (
               <button className="secondary-button" onClick={() => setModal(null)}>Wróć do PupilCare</button>
             )}
-            <p className="premium-note">Cena abonamentu zostanie ustalona po potwierdzeniu kosztu konsultacji lekarza.</p>
+            <p className="premium-note">Subskrypcję można anulować w dowolnym momencie. Płatności podłączymy w kolejnym etapie.</p>
           </div>
         </ModalShell>
       )}
@@ -846,6 +990,43 @@ function Dashboard({
         </article>
       </section>
     </div>
+  );
+}
+
+function FirstPetSetup({
+  onSubmit,
+  email,
+  error,
+  onSignOut,
+}: {
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void | Promise<void>;
+  email?: string;
+  error?: string;
+  onSignOut?: () => void | Promise<void>;
+}) {
+  return (
+    <main className="first-pet-page">
+      <section className="first-pet-card">
+        <div className="brand auth-brand">
+          <div className="brand-mark">🐾</div>
+          <div><strong>PupilCare</strong><span>{email || "Nowe konto"}</span></div>
+        </div>
+        <span className="auth-eyebrow">Pierwszy krok</span>
+        <h1>Kogo będziemy wspólnie otaczać opieką?</h1>
+        <p>Podaj tylko podstawowe informacje. Zdrowie, dokumenty i przypomnienia uzupełnisz później.</p>
+        <form className="form-grid first-pet-form" onSubmit={onSubmit}>
+          <Field label="Imię pupila" name="name" placeholder="np. Figa" required />
+          <SelectField label="Gatunek" name="species" options={["Pies", "Kot", "Królik", "Gryzoń", "Ptak", "Gad", "Koń", "Inny"]} />
+          <Field label="Rasa" name="breed" placeholder="np. Beagle" />
+          <Field label="Wiek lub data urodzenia" name="age" placeholder="np. 2 lata" />
+          <SelectField label="Płeć" name="sex" options={["Samica", "Samiec", "Nie wiem"]} />
+          <Field label="Waga" name="weight" placeholder="np. 8,5 kg" />
+          {error && <p className="data-error full">{error}</p>}
+          <button className="primary-button full" type="submit">Utwórz profil pupila <Icon name="arrow" /></button>
+        </form>
+        {onSignOut && <button className="auth-mode" onClick={() => void onSignOut()}>Wyloguj się</button>}
+      </section>
+    </main>
   );
 }
 
@@ -1066,13 +1247,11 @@ function AiAssistant({
 function Vet24({
   pet,
   isPremium,
-  premiumVetUsed,
   onFinish,
   onHistory,
 }: {
   pet: Pet;
   isPremium: boolean;
-  premiumVetUsed: boolean;
   onFinish: (summary: string) => void;
   onHistory: () => void;
 }) {
@@ -1080,7 +1259,7 @@ function Vet24({
   const [symptoms, setSymptoms] = useState("");
   const [duration, setDuration] = useState("");
   const [summarySaved, setSummarySaved] = useState(false);
-  const included = isPremium && !premiumVetUsed;
+  const price = isPremium ? "49,99 zł" : "89,99 zł";
 
   const saveSummary = () => {
     if (!summarySaved) {
@@ -1116,8 +1295,8 @@ function Vet24({
           </article>
           <aside className="vet24-price-card card">
             <span className="section-kicker">Twoja konsultacja</span>
-            <h3>{included ? "W cenie Premium" : "Konsultacja płatna"}</h3>
-            <p>{included ? "Masz jeszcze jedną konsultację w tym miesiącu." : "Dokładną cenę pokażemy przed połączeniem z lekarzem."}</p>
+            <h3>{price}</h3>
+            <p>{isPremium ? "Cena dla użytkowników Premium." : "Bez abonamentu i ukrytych opłat."}</p>
             <div><Icon name="clock" /><span><strong>około 10–15 min</strong><small>czas rozmowy wideo</small></span></div>
             <div><Icon name="file" /><span><strong>Podsumowanie wizyty</strong><small>zapisane w historii pupila</small></span></div>
             <div><Icon name="shield" /><span><strong>Bez powtarzania danych</strong><small>lekarz dostaje gotowy wywiad</small></span></div>
@@ -1144,13 +1323,13 @@ function Vet24({
         <section className="vet24-flow-card payment-confirm card">
           <span className="card-icon mint"><Icon name="shield" /></span>
           <span className="section-kicker">Potwierdzenie przed połączeniem</span>
-          <h2>{included ? "Konsultacja jest w cenie Premium" : "To jest płatna konsultacja"}</h2>
-          <p>{included ? "Po zakończeniu wykorzystasz jedną konsultację z bieżącego miesiąca." : "W wersji produkcyjnej w tym miejscu pojawi się cena i bezpieczna płatność online."}</p>
+          <h2>Konsultacja Vet 24/7 · {price}</h2>
+          <p>{isPremium ? "Uwzględniliśmy cenę Premium. Płatność będzie obsługiwana bezpiecznie online." : "To pełna cena konsultacji bez obowiązkowej subskrypcji."}</p>
           <div className="doctor-brief">
             <span>{pet.emoji}</span><div><small>Informacja dla lekarza</small><strong>{symptoms}</strong><em>{duration || "Czas trwania niepodany"}</em></div>
           </div>
           <label className="consent-row"><input type="checkbox" defaultChecked /><span>Zgadzam się na przekazanie lekarzowi danych profilu i opisu objawów.</span></label>
-          <div className="flow-actions"><button className="secondary-button" onClick={() => setStep("intake")}>Wstecz</button><button className="primary-button" onClick={() => setStep("waiting")}>{included ? "Użyj konsultacji Premium" : "Potwierdź płatną sesję"} <Icon name="arrow" /></button></div>
+          <div className="flow-actions"><button className="secondary-button" onClick={() => setStep("intake")}>Wstecz</button><button className="primary-button" onClick={() => setStep("waiting")}>Przejdź do płatności · {price} <Icon name="arrow" /></button></div>
         </section>
       )}
 
