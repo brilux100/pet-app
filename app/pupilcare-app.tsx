@@ -13,7 +13,7 @@ type View =
   | "services"
   | "vet24";
 
-type Modal = "pet" | "visit" | "document" | "premium" | null;
+type Modal = "pet" | "visit" | "document" | "premium" | "rewards" | null;
 
 type Visit = {
   id: string;
@@ -70,6 +70,30 @@ type NewPetInput = {
   weight: string;
   photo?: File | null;
 };
+
+type CareTask = {
+  id: string;
+  petId: string;
+  taskKey: "water" | "activity" | "training";
+  title: string;
+  category: string;
+  points: number;
+  scheduledFor: string;
+  status: "pending" | "completed" | "skipped";
+  completedAt?: string;
+};
+
+type PetCheckin = {
+  id: string;
+  petId: string;
+  checkedOn: string;
+  appetite: number;
+  energy: number;
+  digestion: number;
+  note: string;
+};
+
+type RewardCode = "ai_chat" | "service_fee" | "vet24_discount";
 
 type PupilCareAppProps = {
   supabase?: SupabaseClient;
@@ -227,6 +251,38 @@ function petEmoji(species: string) {
 
 const FREE_AI_LIMIT = 5;
 
+const rewardCatalog: { code: RewardCode; title: string; description: string; cost: number; tone: string }[] = [
+  { code: "ai_chat", title: "Dodatkowa rozmowa AI", description: "Jedna dodatkowa rozmowa o Twoim pupilu", cost: 100, tone: "purple" },
+  { code: "service_fee", title: "Opłata serwisowa 0 zł", description: "Jedna rezerwacja bez opłaty PupilCare", cost: 300, tone: "mint" },
+  { code: "vet24_discount", title: "20 zł mniej za Vet24", description: "Rabat na konsultację wideo z lekarzem", cost: 500, tone: "yellow" },
+];
+
+function todayKey() {
+  const now = new Date();
+  const offset = now.getTimezoneOffset() * 60_000;
+  return new Date(now.getTime() - offset).toISOString().slice(0, 10);
+}
+
+function recordId(prefix: string, authenticated = false) {
+  if (authenticated && typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
+  return createId(prefix);
+}
+
+function dailyTasksForPet(pet: Pet, authenticated = false): CareTask[] {
+  const activity = pet.species.toLowerCase().includes("kot")
+    ? "10 minut aktywnej zabawy"
+    : "Spacer pełen węszenia";
+  const training = pet.species.toLowerCase().includes("kot")
+    ? "5 minut spokojnej pielęgnacji"
+    : "5 minut nauki lub powtórki komendy";
+  const date = todayKey();
+  return [
+    { id: recordId("care-water", authenticated), petId: pet.id, taskKey: "water", title: "Świeża woda i regularny posiłek", category: "Codzienna opieka", points: 5, scheduledFor: date, status: "pending" },
+    { id: recordId("care-activity", authenticated), petId: pet.id, taskKey: "activity", title: activity, category: "Aktywność", points: 10, scheduledFor: date, status: "pending" },
+    { id: recordId("care-training", authenticated), petId: pet.id, taskKey: "training", title: training, category: "Rozwój i relacja", points: 15, scheduledFor: date, status: "pending" },
+  ];
+}
+
 function isPetTopic(question: string, petName: string) {
   const text = question.toLowerCase();
   const petWords = [
@@ -316,6 +372,12 @@ export default function PupilCareApp({ supabase, userId, userEmail, onSignOut }:
   const [chatInput, setChatInput] = useState("");
   const [aiUsed, setAiUsed] = useState(0);
   const [isPremium, setIsPremium] = useState(false);
+  const [careTasks, setCareTasks] = useState<CareTask[]>(() => demoPets.flatMap((item) => dailyTasksForPet(item)));
+  const [checkins, setCheckins] = useState<PetCheckin[]>([]);
+  const [points, setPoints] = useState(authenticated ? 0 : 120);
+  const [claimedRewards, setClaimedRewards] = useState<RewardCode[]>([]);
+  const [careCloudReady, setCareCloudReady] = useState(!authenticated);
+  const [rewardMessage, setRewardMessage] = useState("");
 
   useEffect(() => {
     if (authenticated) return;
@@ -334,6 +396,29 @@ export default function PupilCareApp({ supabase, userId, userEmail, onSignOut }:
       window.localStorage.removeItem("pupilcare-pets-v1");
     }
   }, [authenticated]);
+
+  useEffect(() => {
+    const storageKey = authenticated && userId ? `pupilcare-care-${userId}` : "pupilcare-care-demo-v1";
+    const saved = window.localStorage.getItem(storageKey);
+    if (!saved) return;
+    try {
+      const parsed = JSON.parse(saved) as {
+        careTasks?: CareTask[];
+        checkins?: PetCheckin[];
+        points?: number;
+        claimedRewards?: RewardCode[];
+      };
+      const timer = window.setTimeout(() => {
+        if (parsed.careTasks?.length) setCareTasks(parsed.careTasks);
+        if (parsed.checkins) setCheckins(parsed.checkins);
+        if (typeof parsed.points === "number") setPoints(parsed.points);
+        if (parsed.claimedRewards) setClaimedRewards(parsed.claimedRewards);
+      }, 0);
+      return () => window.clearTimeout(timer);
+    } catch {
+      window.localStorage.removeItem(storageKey);
+    }
+  }, [authenticated, userId]);
 
   useEffect(() => {
     if (authenticated) return;
@@ -367,9 +452,14 @@ export default function PupilCareApp({ supabase, userId, userEmail, onSignOut }:
         { id: userId, email: userEmail ?? null },
         { onConflict: "id" },
       );
-      const [petsResult, profileResult] = await Promise.all([
+      const date = todayKey();
+      const [petsResult, profileResult, tasksResult, checkinsResult, ledgerResult, redemptionsResult] = await Promise.all([
         supabase!.from("pets").select("*, vaccines(*), visits(*), documents(*)").order("created_at"),
         supabase!.from("profiles").select("plan").eq("id", userId).maybeSingle(),
+        supabase!.from("care_tasks").select("*").eq("scheduled_for", date).order("created_at"),
+        supabase!.from("pet_checkins").select("*").eq("checked_on", date),
+        supabase!.from("reward_ledger").select("amount"),
+        supabase!.from("reward_redemptions").select("reward_code").eq("status", "available"),
       ]);
       if (!mounted) return;
       if (petsResult.error) {
@@ -387,6 +477,34 @@ export default function PupilCareApp({ supabase, userId, userEmail, onSignOut }:
       }
       if (profileUpsert.error) console.error("PupilCare profile upsert failed", profileUpsert.error);
       setIsPremium(profileResult.data?.plan === "premium");
+      const careReady = !tasksResult.error && !checkinsResult.error && !ledgerResult.error && !redemptionsResult.error;
+      setCareCloudReady(careReady);
+      if (careReady) {
+        setCareTasks((tasksResult.data || []).map((row: Record<string, any>) => ({
+          id: String(row.id),
+          petId: String(row.pet_id),
+          taskKey: row.task_key as CareTask["taskKey"],
+          title: String(row.title),
+          category: String(row.category),
+          points: row.task_key === "training" ? 15 : row.task_key === "activity" ? 10 : 5,
+          scheduledFor: String(row.scheduled_for),
+          status: row.status as CareTask["status"],
+          completedAt: row.completed_at ? String(row.completed_at) : undefined,
+        })));
+        setCheckins((checkinsResult.data || []).map((row: Record<string, any>) => ({
+          id: String(row.id),
+          petId: String(row.pet_id),
+          checkedOn: String(row.checked_on),
+          appetite: Number(row.appetite),
+          energy: Number(row.energy),
+          digestion: Number(row.digestion),
+          note: String(row.note || ""),
+        })));
+        setPoints((ledgerResult.data || []).reduce((sum, row) => sum + Number(row.amount || 0), 0));
+        setClaimedRewards((redemptionsResult.data || []).map((row) => row.reward_code as RewardCode));
+      } else {
+        console.info("PupilCare daily care migration is not active yet; using local fallback.");
+      }
       setDataLoading(false);
     }
     void loadAccount();
@@ -409,10 +527,38 @@ export default function PupilCareApp({ supabase, userId, userEmail, onSignOut }:
     );
   }, [aiUsed, isPremium, authenticated]);
 
+  useEffect(() => {
+    const storageKey = authenticated && userId ? `pupilcare-care-${userId}` : "pupilcare-care-demo-v1";
+    window.localStorage.setItem(storageKey, JSON.stringify({ careTasks, checkins, points, claimedRewards }));
+  }, [authenticated, careTasks, checkins, claimedRewards, points, userId]);
+
   const pet = pets.find((item) => item.id === activePetId) || pets[0] || demoPets[0];
+  const todaysTasks = careTasks.filter((item) => item.petId === pet.id && item.scheduledFor === todayKey());
+  const todaysCheckin = checkins.find((item) => item.petId === pet.id && item.checkedOn === todayKey());
   const nextVisit = useMemo(() => {
     return [...pet.visits].sort((a, b) => a.date.localeCompare(b.date))[0];
   }, [pet.visits]);
+
+  useEffect(() => {
+    if (dataLoading || !pet?.id || todaysTasks.length) return;
+    const generated = dailyTasksForPet(pet, authenticated);
+    setCareTasks((current) => [...current, ...generated]);
+    if (authenticated && supabase && userId && careCloudReady) {
+      void supabase.from("care_tasks").upsert(
+        generated.map((task) => ({
+          id: task.id,
+          owner_id: userId,
+          pet_id: task.petId,
+          task_key: task.taskKey,
+          title: task.title,
+          category: task.category,
+          scheduled_for: task.scheduledFor,
+          status: task.status,
+        })),
+        { onConflict: "pet_id,scheduled_for,task_key", ignoreDuplicates: true },
+      );
+    }
+  }, [authenticated, careCloudReady, dataLoading, pet, supabase, todaysTasks.length, userId]);
 
   const changeView = (next: View) => {
     setView(next);
@@ -580,10 +726,87 @@ export default function PupilCareApp({ supabase, userId, userEmail, onSignOut }:
     setView("documents");
   };
 
+  const completeCareTask = async (taskId: string) => {
+    const task = careTasks.find((item) => item.id === taskId);
+    if (!task || task.status === "completed") return;
+
+    const completedAt = new Date().toISOString();
+    if (authenticated && supabase && userId && careCloudReady) {
+      const { error } = await supabase
+        .from("care_tasks")
+        .update({ status: "completed", completed_at: completedAt })
+        .eq("id", taskId)
+        .eq("owner_id", userId);
+      if (error) {
+        setDataError("Nie udało się zapisać zadania. Spróbuj ponownie.");
+        return;
+      }
+    }
+
+    setCareTasks((current) => current.map((item) => item.id === taskId
+      ? { ...item, status: "completed", completedAt }
+      : item));
+    setPoints((current) => current + task.points);
+  };
+
+  const saveCheckin = async (values: Omit<PetCheckin, "id" | "petId" | "checkedOn">) => {
+    const existing = checkins.find((item) => item.petId === pet.id && item.checkedOn === todayKey());
+    const checkin: PetCheckin = {
+      id: existing?.id || recordId("checkin", authenticated),
+      petId: pet.id,
+      checkedOn: todayKey(),
+      ...values,
+    };
+
+    if (authenticated && supabase && userId && careCloudReady) {
+      const { error } = await supabase.from("pet_checkins").upsert({
+        id: checkin.id,
+        owner_id: userId,
+        pet_id: pet.id,
+        checked_on: checkin.checkedOn,
+        appetite: checkin.appetite,
+        energy: checkin.energy,
+        digestion: checkin.digestion,
+        note: checkin.note || null,
+      }, { onConflict: "pet_id,checked_on" });
+      if (error) {
+        setDataError("Nie udało się zapisać samopoczucia. Spróbuj ponownie.");
+        return false;
+      }
+    }
+
+    setCheckins((current) => existing
+      ? current.map((item) => item.id === existing.id ? checkin : item)
+      : [...current, checkin]);
+    if (!existing) setPoints((current) => current + 10);
+    return true;
+  };
+
+  const redeemReward = async (code: RewardCode) => {
+    const reward = rewardCatalog.find((item) => item.code === code);
+    if (!reward || points < reward.cost) return;
+
+    if (authenticated && supabase && userId && careCloudReady) {
+      const { data, error } = await supabase.rpc("redeem_pupil_reward", { p_reward_code: code });
+      if (error) {
+        setRewardMessage("Nie udało się odebrać nagrody. Spróbuj ponownie.");
+        return;
+      }
+      const nextBalance = Array.isArray(data) ? data[0]?.new_balance : undefined;
+      setPoints(typeof nextBalance === "number" ? nextBalance : points - reward.cost);
+    } else {
+      setPoints((current) => current - reward.cost);
+    }
+
+    setClaimedRewards((current) => [...current, code]);
+    setRewardMessage(`Gotowe — ${reward.title} czeka w Twoich nagrodach.`);
+  };
+
   const askAi = (text?: string) => {
     const question = (text || chatInput).trim();
     if (!question) return;
     const urgent = isUrgentPetQuestion(question);
+    const hasAiReward = claimedRewards.includes("ai_chat");
 
     if (!isPetTopic(question, pet.name)) {
       setChat((current) => [
@@ -599,7 +822,7 @@ export default function PupilCareApp({ supabase, userId, userEmail, onSignOut }:
       return;
     }
 
-    if (!isPremium && aiUsed >= FREE_AI_LIMIT && !urgent) {
+    if (!isPremium && aiUsed >= FREE_AI_LIMIT && !hasAiReward && !urgent) {
       setModal("premium");
       return;
     }
@@ -623,7 +846,19 @@ export default function PupilCareApp({ supabase, userId, userEmail, onSignOut }:
       answer =
         "Przed szczepieniem " + pet.name + " powinien czuć się dobrze. Zabierz książeczkę zdrowia, listę leków i informację o ostatnim odrobaczeniu. Po szczepieniu zaplanuj spokojniejszy dzień i obserwuj samopoczucie.";
     }
-    if (!isPremium && !urgent) setAiUsed((current) => current + 1);
+    if (!isPremium && !urgent) {
+      if (aiUsed < FREE_AI_LIMIT) {
+        setAiUsed((current) => current + 1);
+      } else if (hasAiReward) {
+        setClaimedRewards((current) => {
+          const index = current.indexOf("ai_chat");
+          return index < 0 ? current : current.filter((_, itemIndex) => itemIndex !== index);
+        });
+        if (authenticated && supabase && careCloudReady) {
+          void supabase.rpc("use_pupil_reward", { p_reward_code: "ai_chat" });
+        }
+      }
+    }
     setChat((current) => [
       ...current,
       { id: createId("user"), role: "user", text: question },
@@ -701,6 +936,12 @@ export default function PupilCareApp({ supabase, userId, userEmail, onSignOut }:
           ))}
         </nav>
 
+        <button className="points-wallet" onClick={() => { setRewardMessage(""); setModal("rewards"); }}>
+          <span className="points-paw">🐾</span>
+          <span><strong>{points} Łapek</strong><small>Otwórz nagrody</small></span>
+          <Icon name="arrow" />
+        </button>
+
         <div className="sidebar-help">
           <span className="status-dot" />
           <div>
@@ -725,6 +966,7 @@ export default function PupilCareApp({ supabase, userId, userEmail, onSignOut }:
           </button>
           <div className="mobile-brand">PupilCare</div>
           <div className="top-actions">
+            <button className="mobile-points" onClick={() => setModal("rewards")}>🐾 <strong>{points}</strong></button>
             {onSignOut && <button className="signout-button" onClick={() => void onSignOut()}>Wyloguj</button>}
             <button className="top-action" aria-label="Powiadomienia">
               <Icon name="bell" /><span className="notification-dot" />
@@ -743,6 +985,12 @@ export default function PupilCareApp({ supabase, userId, userEmail, onSignOut }:
             onVisit={() => setModal("visit")}
             onDocument={() => setModal("document")}
             onVet24={() => changeView("vet24")}
+            tasks={todaysTasks}
+            checkin={todaysCheckin}
+            points={points}
+            onCompleteTask={completeCareTask}
+            onCheckin={saveCheckin}
+            onRewards={() => { setRewardMessage(""); setModal("rewards"); }}
           />
         )}
         {view === "profile" && <Profile pet={pet} />}
@@ -758,7 +1006,7 @@ export default function PupilCareApp({ supabase, userId, userEmail, onSignOut }:
             onAsk={askAi}
             onVet={() => changeView("vet24")}
             onPremium={() => setModal("premium")}
-            remaining={Math.max(0, FREE_AI_LIMIT - aiUsed)}
+            remaining={Math.max(0, FREE_AI_LIMIT - aiUsed) + claimedRewards.filter((code) => code === "ai_chat").length}
             isPremium={isPremium}
           />
         )}
@@ -873,6 +1121,38 @@ export default function PupilCareApp({ supabase, userId, userEmail, onSignOut }:
           </div>
         </ModalShell>
       )}
+
+      {modal === "rewards" && (
+        <ModalShell
+          title="Nagrody PupilCare"
+          subtitle="Wymieniaj Łapki na realne korzyści"
+          onClose={() => setModal(null)}
+        >
+          <div className="rewards-modal">
+            <div className="rewards-balance">
+              <span>🐾</span>
+              <div><small>Twój stan konta</small><strong>{points} Łapek</strong></div>
+              <em>Zdobywaj je za prawdziwą opiekę</em>
+            </div>
+            {rewardMessage && <p className="reward-message" role="status">{rewardMessage}</p>}
+            <div className="reward-catalog">
+              {rewardCatalog.map((reward) => {
+                const claimed = claimedRewards.includes(reward.code);
+                return (
+                  <article className={`reward-card ${reward.tone}`} key={reward.code}>
+                    <span className="reward-icon">{reward.code === "ai_chat" ? "✨" : reward.code === "service_fee" ? "🎟️" : "🩺"}</span>
+                    <div><h3>{reward.title}</h3><p>{reward.description}</p></div>
+                    <button disabled={points < reward.cost} onClick={() => void redeemReward(reward.code)}>
+                      {claimed ? "Odbierz ponownie" : points >= reward.cost ? `Odbierz · ${reward.cost} 🐾` : `Brakuje ${reward.cost - points} 🐾`}
+                    </button>
+                  </article>
+                );
+              })}
+            </div>
+            <p className="rewards-note">Wartości nagród są pilotażowe. Przed uruchomieniem płatności dopasujemy je do realnych kosztów.</p>
+          </div>
+        </ModalShell>
+      )}
     </main>
   );
 }
@@ -884,6 +1164,12 @@ function Dashboard({
   onVisit,
   onDocument,
   onVet24,
+  tasks,
+  checkin,
+  points,
+  onCompleteTask,
+  onCheckin,
+  onRewards,
 }: {
   pet: Pet;
   nextVisit?: Visit;
@@ -891,6 +1177,12 @@ function Dashboard({
   onVisit: () => void;
   onDocument: () => void;
   onVet24: () => void;
+  tasks: CareTask[];
+  checkin?: PetCheckin;
+  points: number;
+  onCompleteTask: (taskId: string) => void | Promise<void>;
+  onCheckin: (values: Omit<PetCheckin, "id" | "petId" | "checkedOn">) => Promise<boolean>;
+  onRewards: () => void;
 }) {
   const services = [
     {
@@ -937,6 +1229,41 @@ function Dashboard({
         </div>
         <div className="today-chip"><Icon name="calendar" /> Sobota, 22 sierpnia</div>
       </div>
+
+      <section className="daily-care-grid">
+        <article className="daily-plan-card">
+          <div className="daily-plan-head">
+            <div>
+              <span className="section-kicker">Dzisiaj dla {pet.name}</span>
+              <h2>Małe kroki, dobra opieka</h2>
+            </div>
+            <button className="daily-points-button" onClick={onRewards}>🐾 {points} Łapek <Icon name="arrow" /></button>
+          </div>
+          <div className="daily-progress">
+            <div><span style={{ width: `${tasks.length ? (tasks.filter((task) => task.status === "completed").length / tasks.length) * 100 : 0}%` }} /></div>
+            <strong>{tasks.filter((task) => task.status === "completed").length}/{tasks.length} wykonane</strong>
+          </div>
+          <div className="daily-task-list">
+            {tasks.map((task) => (
+              <button
+                key={task.id}
+                className={task.status === "completed" ? "daily-task completed" : "daily-task"}
+                onClick={() => void onCompleteTask(task.id)}
+                disabled={task.status === "completed"}
+              >
+                <span className="task-check">{task.status === "completed" ? "✓" : ""}</span>
+                <span className="task-copy"><small>{task.category}</small><strong>{task.title}</strong></span>
+                <span className="task-points">+{task.points} 🐾</span>
+              </button>
+            ))}
+          </div>
+          {tasks.length > 0 && tasks.every((task) => task.status === "completed") && (
+            <div className="daily-complete"><span>🎉</span><div><strong>Plan na dziś wykonany!</strong><small>{pet.name} ma dziś wszystko, czego potrzebuje.</small></div></div>
+          )}
+        </article>
+
+        <DailyCheckinCard pet={pet} existing={checkin} onSave={onCheckin} onOpenAi={() => onView("ai")} />
+      </section>
 
       <section className="home-feature-grid">
         <article className="vet24-home-card">
@@ -1051,6 +1378,80 @@ function Dashboard({
         </article>
       </section>
     </div>
+  );
+}
+
+function DailyCheckinCard({
+  pet,
+  existing,
+  onSave,
+  onOpenAi,
+}: {
+  pet: Pet;
+  existing?: PetCheckin;
+  onSave: (values: Omit<PetCheckin, "id" | "petId" | "checkedOn">) => Promise<boolean>;
+  onOpenAi: () => void;
+}) {
+  const [editing, setEditing] = useState(!existing);
+  const [appetite, setAppetite] = useState(existing?.appetite || 3);
+  const [energy, setEnergy] = useState(existing?.energy || 3);
+  const [digestion, setDigestion] = useState(existing?.digestion || 3);
+  const [note, setNote] = useState(existing?.note || "");
+  const [saving, setSaving] = useState(false);
+  const needsAttention = Math.min(appetite, energy, digestion) === 1;
+
+  useEffect(() => {
+    setEditing(!existing);
+    setAppetite(existing?.appetite || 3);
+    setEnergy(existing?.energy || 3);
+    setDigestion(existing?.digestion || 3);
+    setNote(existing?.note || "");
+  }, [existing, pet.id]);
+
+  const labels = ["Gorzej", "Normalnie", "Świetnie"];
+  const row = (label: string, value: number, setter: (next: number) => void) => (
+    <div className="checkin-row">
+      <span>{label}</span>
+      <div>{labels.map((option, index) => (
+        <button key={option} type="button" className={value === index + 1 ? "active" : ""} onClick={() => setter(index + 1)} aria-label={`${label}: ${option}`}>
+          {index === 0 ? "😕" : index === 1 ? "🙂" : "😄"}
+        </button>
+      ))}</div>
+    </div>
+  );
+
+  const submit = async () => {
+    setSaving(true);
+    const saved = await onSave({ appetite, energy, digestion, note });
+    if (saved) setEditing(false);
+    setSaving(false);
+  };
+
+  return (
+    <article className={needsAttention ? "daily-checkin-card attention" : "daily-checkin-card"}>
+      <div className="checkin-head">
+        <span className="checkin-face">{needsAttention ? "💛" : "💚"}</span>
+        <div><span className="section-kicker">Check-in · +10 Łapek</span><h2>Jak czuje się {pet.name}?</h2></div>
+      </div>
+      {editing ? (
+        <>
+          <div className="checkin-rows">
+            {row("Apetyt", appetite, setAppetite)}
+            {row("Energia", energy, setEnergy)}
+            {row("Brzuszek", digestion, setDigestion)}
+          </div>
+          <input className="checkin-note" value={note} onChange={(event) => setNote(event.target.value)} placeholder="Dodaj krótką uwagę (opcjonalnie)" />
+          <button className="checkin-save" onClick={() => void submit()} disabled={saving}>{saving ? "Zapisujemy…" : existing ? "Zapisz zmiany" : "Zapisz samopoczucie · +10 🐾"}</button>
+        </>
+      ) : (
+        <div className="checkin-saved">
+          <span className="checkin-success">✓</span>
+          <div><strong>Dzisiejszy check-in zapisany</strong><p>{needsAttention ? "Jedna z odpowiedzi wymaga obserwacji." : `Wszystko wygląda dobrze u ${pet.name}.`}</p></div>
+          {needsAttention && <button onClick={onOpenAi}>Omów z AI</button>}
+          <button className="checkin-edit" onClick={() => setEditing(true)}>Zmień</button>
+        </div>
+      )}
+    </article>
   );
 }
 
@@ -1373,7 +1774,7 @@ function AiAssistant({
           {!isPremium && (
             <div className="ai-allowance">
               <span><Icon name="spark" /> Bezpłatne pytania</span>
-              <div><i style={{ width: ((remaining / FREE_AI_LIMIT) * 100) + "%" }} /></div>
+              <div><i style={{ width: Math.min(100, (remaining / FREE_AI_LIMIT) * 100) + "%" }} /></div>
               <strong>Pozostało {remaining}</strong>
             </div>
           )}
