@@ -899,6 +899,7 @@ function Dashboard({
       text: "Znajdź klinikę i umów wizytę",
       tone: "mint",
       badge: "Terminy online",
+      cta: "Umów wizytę",
     },
     {
       icon: "spark" as IconName,
@@ -906,6 +907,7 @@ function Dashboard({
       text: "Pielęgnacja, kąpiel i strzyżenie",
       tone: "purple",
       badge: "Najbliżej Ciebie",
+      cta: "Znajdź groomera",
     },
     {
       icon: "shop" as IconName,
@@ -913,6 +915,7 @@ function Dashboard({
       text: "Karma, akcesoria i sprawdzone produkty",
       tone: "yellow",
       badge: "Polecane dla " + pet.name,
+      cta: "Zobacz produkty",
     },
     {
       icon: "paw" as IconName,
@@ -920,6 +923,7 @@ function Dashboard({
       text: "Opiekun, petsitter i nocleg",
       tone: "blue",
       badge: "Bezpieczna opieka",
+      cta: "Znajdź opiekę",
     },
   ];
 
@@ -984,14 +988,14 @@ function Dashboard({
 
       <section className="ecosystem-grid">
         {services.map((service) => (
-          <button className="ecosystem-card" key={service.title} onClick={() => onView("services")}>
+          <button className={"ecosystem-card " + service.tone} key={service.title} onClick={() => onView("services")}>
             <span className={"ecosystem-icon " + service.tone}><Icon name={service.icon} /></span>
             <span className="ecosystem-copy">
               <em>{service.badge}</em>
               <strong>{service.title}</strong>
               <small>{service.text}</small>
             </span>
-            <span className="ecosystem-arrow"><Icon name="arrow" /></span>
+            <span className="ecosystem-arrow"><span>{service.cta}</span><Icon name="arrow" /></span>
           </button>
         ))}
       </section>
