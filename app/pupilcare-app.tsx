@@ -1331,24 +1331,28 @@ function Dashboard({
           <div className="doctor-badge"><Icon name="cross" /><span><strong>Vet24</strong><em>gotowy do rozmowy</em></span></div>
         </article>
 
-        <article className="ai-home-card">
-          <div className="ai-home-top">
-            <span className="home-feature-icon purple"><Icon name="spark" /></span>
-            <span className="beta-chip">AI</span>
-          </div>
-          <div>
-            <p className="feature-label">Pierwszy krok</p>
-            <h2>AI Asystent</h2>
-            <p>Opisz objawy, zachowanie albo zadaj pytanie o opiekę nad {pet.name}.</p>
-          </div>
-          <div className="ai-home-prompt">
-            <span>„{pet.name} nie je od rana...”</span>
-            <button aria-label="Otwórz AI Asystenta" onClick={() => onView("ai")}><Icon name="send" /></button>
-          </div>
-          <button className="ai-home-button" onClick={() => onView("ai")}>
-            Zapytaj AI Asystenta <Icon name="arrow" />
-          </button>
-        </article>
+        <div className="home-assistant-stack">
+          <article className="ai-home-card">
+            <div className="ai-home-top">
+              <span className="home-feature-icon purple"><Icon name="spark" /></span>
+              <span className="beta-chip">AI</span>
+            </div>
+            <div>
+              <p className="feature-label">Pierwszy krok</p>
+              <h2>AI Asystent</h2>
+              <p>Opisz objawy, zachowanie albo zadaj pytanie o opiekę nad {pet.name}.</p>
+            </div>
+            <div className="ai-home-prompt">
+              <span>„{pet.name} nie je od rana...”</span>
+              <button aria-label="Otwórz AI Asystenta" onClick={() => onView("ai")}><Icon name="send" /></button>
+            </div>
+            <button className="ai-home-button" onClick={() => onView("ai")}>
+              Zapytaj AI Asystenta <Icon name="arrow" />
+            </button>
+          </article>
+
+          <DailyCheckinCard pet={pet} existing={checkin} onSave={onCheckin} onOpenAi={() => onView("ai")} />
+        </div>
       </section>
 
       <section className="care-overview-card">
@@ -1374,7 +1378,7 @@ function Dashboard({
       </section>
 
       {careExpanded && (
-        <section className="daily-care-grid expanded">
+        <section className="daily-care-grid expanded plan-only">
           <article className="daily-plan-card">
             <div className="daily-plan-head">
               <div>
@@ -1405,8 +1409,6 @@ function Dashboard({
               <div className="daily-complete"><span>🎉</span><div><strong>Plan na dziś wykonany!</strong><small>{pet.name} ma dziś wszystko, czego potrzebuje.</small></div></div>
             )}
           </article>
-
-          <DailyCheckinCard pet={pet} existing={checkin} onSave={onCheckin} onOpenAi={() => onView("ai")} />
         </section>
       )}
 
