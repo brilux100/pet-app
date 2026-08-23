@@ -389,6 +389,89 @@ svg {
   gap: 12px;
 }
 
+.top-care-status {
+  display: grid;
+  grid-template-columns: auto minmax(145px, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  min-width: 260px;
+  border: 1px solid #cfe5d8;
+  border-radius: 15px;
+  background: linear-gradient(135deg, #f2fbf5, #e5f7eb);
+  padding: 7px 10px;
+  color: var(--ink);
+  text-align: left;
+}
+
+.top-care-level {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 11px;
+  background: #b8ffd1;
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.top-care-copy small,
+.top-care-copy strong {
+  display: block;
+}
+
+.top-care-copy small {
+  color: #6f847a;
+  font-size: 6px;
+  font-weight: 900;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.top-care-copy strong {
+  margin-top: 1px;
+  font-size: 9px;
+}
+
+.top-care-copy i {
+  display: block;
+  height: 3px;
+  margin-top: 4px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: rgba(23, 54, 44, 0.1);
+}
+
+.top-care-copy i b {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #35af72;
+}
+
+.top-care-status em {
+  color: #2c8057;
+  font-size: 8px;
+  font-style: normal;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.top-points-wallet {
+  display: inline-flex;
+  height: 46px;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid #ead58a;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #fff8d8, #ffec9f);
+  padding: 0 12px;
+  color: var(--ink);
+}
+
+.top-points-wallet > span { font-size: 15px; }
+.top-points-wallet strong { font-size: 12px; }
+.top-points-wallet small { color: #826f37; font-size: 7px; font-weight: 850; }
+
 .mobile-points {
   display: none;
   align-items: center;
@@ -3186,12 +3269,60 @@ svg {
   text-transform: uppercase;
 }
 
+.level-chip {
+  display: inline-flex;
+  margin-left: 5px;
+  border-radius: 999px;
+  background: #fff0af;
+  padding: 5px 8px;
+  color: #665515;
+  font-size: 7px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .reward-rules p {
   margin: 7px 0 0;
   color: #6e663f;
   font-size: 8px;
   line-height: 1.5;
 }
+
+.level-up-toast {
+  position: fixed;
+  top: 88px;
+  right: 28px;
+  z-index: 35;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+  width: min(390px, calc(100vw - 32px));
+  border: 1px solid #dfc86e;
+  border-radius: 20px;
+  background: linear-gradient(135deg, #17362c, #2b6550);
+  padding: 15px;
+  color: white;
+  box-shadow: 0 22px 55px rgba(23, 54, 44, 0.25);
+}
+
+.level-up-toast > span {
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  border-radius: 15px;
+  background: #fff0af;
+  font-size: 22px;
+}
+
+.level-up-toast small,
+.level-up-toast strong { display: block; }
+.level-up-toast small { color: #a8c8bb; font-size: 7px; font-weight: 900; letter-spacing: 0.08em; text-transform: uppercase; }
+.level-up-toast strong { margin-top: 2px; font-size: 12px; }
+.level-up-toast p { margin: 3px 0 0; color: #d5e5de; font-size: 8px; }
+.level-up-toast button { align-self: start; border: 0; background: transparent; color: white; font-size: 18px; }
 
 .vet24-status-line {
   display: grid;
@@ -3878,6 +4009,10 @@ svg {
   .daily-care-grid {
     grid-template-columns: 1fr;
   }
+
+  .top-care-status {
+    min-width: 210px;
+  }
 }
 
 @media (max-width: 860px) {
@@ -3941,6 +4076,15 @@ svg {
 
   .mobile-points {
     display: inline-flex;
+  }
+
+  .top-care-status {
+    min-width: 0;
+    grid-template-columns: auto 1fr;
+  }
+
+  .top-care-status em {
+    display: none;
   }
 
   .bottom-nav {
@@ -4070,6 +4214,33 @@ svg {
 
   .signout-button {
     display: none;
+  }
+
+  .top-actions {
+    gap: 6px;
+  }
+
+  .top-care-status {
+    grid-template-columns: auto;
+    padding: 5px;
+  }
+
+  .top-care-copy {
+    display: none;
+  }
+
+  .top-points-wallet {
+    height: 40px;
+    padding: 0 9px;
+  }
+
+  .top-points-wallet small {
+    display: none;
+  }
+
+  .level-up-toast {
+    top: 76px;
+    right: 16px;
   }
 
   .add-pet-button {
