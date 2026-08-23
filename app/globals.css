@@ -4617,31 +4617,44 @@ svg {
   }
 
   .vet24-home-copy > button {
-    max-width: 55%;
+    width: 104px;
+    max-width: none;
+    align-self: flex-end;
+    justify-content: center;
     margin-top: 15px;
-    padding: 11px 13px;
+    padding: 10px;
     font-size: 11px;
+    line-height: 1.2;
+    text-align: center;
+  }
+
+  .vet24-home-copy > button svg {
+    display: none;
   }
 
   .vet24-pet {
     position: absolute;
-    right: 16px;
-    bottom: 18px;
+    right: auto;
+    bottom: 16px;
+    left: 16px;
     min-height: 0;
   }
 
   .pet-avatar.vet {
-    width: 185px;
-    height: 185px;
+    width: clamp(150px, 42vw, 165px);
+    height: clamp(150px, 42vw, 165px);
     border-width: 7px;
-    border-radius: 49px;
-    font-size: 90px;
+    border-radius: 45px;
+    font-size: 82px;
   }
 
   .doctor-badge {
-    right: 2px;
-    bottom: -2px;
-    padding: 7px 9px;
+    right: auto;
+    bottom: 0;
+    left: calc(100% + 8px);
+    width: 108px;
+    justify-content: center;
+    padding: 7px;
   }
 
   .ai-home-card {
@@ -4980,13 +4993,7 @@ svg {
 
 @media (max-width: 390px) {
   .vet24-home-card {
-    min-height: 445px;
-  }
-
-  .pet-avatar.vet {
-    width: 175px;
-    height: 175px;
-    border-radius: 46px;
+    min-height: 410px;
   }
 
   .vet24-home-copy h2 {
