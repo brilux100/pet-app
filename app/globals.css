@@ -4674,19 +4674,51 @@ svg {
   }
 
   .ai-home-card {
-    min-height: 255px;
-    padding: 18px;
+    display: grid;
+    grid-template-columns: 52px minmax(0, 1fr);
+    grid-template-rows: auto auto auto;
+    column-gap: 14px;
+    min-height: 0;
+    padding: 16px;
+  }
+
+  .ai-home-top {
+    display: contents;
   }
 
   .ai-home-card .home-feature-icon {
-    width: 40px;
-    height: 40px;
-    border-radius: 13px;
+    grid-column: 1;
+    grid-row: 1;
+    align-self: start;
+    width: 52px;
+    height: 52px;
+    border-radius: 15px;
+  }
+
+  .ai-home-card .beta-chip {
+    position: absolute;
+    top: 17px;
+    right: 17px;
+    z-index: 3;
+  }
+
+  .ai-home-card > div:nth-child(2) {
+    position: relative;
+    z-index: 2;
+    grid-column: 2;
+    grid-row: 1;
+    min-width: 0;
+    padding-right: 30px;
+  }
+
+  .ai-home-card .feature-label {
+    display: none;
   }
 
   .ai-home-card h2 {
-    margin-top: 3px;
-    font-size: 30px;
+    margin: 1px 0 5px;
+    font-size: 32px;
+    line-height: 1;
   }
 
   .ai-home-card > div:nth-child(2) > p:last-child {
@@ -4695,13 +4727,25 @@ svg {
   }
 
   .ai-home-prompt {
-    margin-top: 13px;
-    padding: 7px 7px 7px 10px;
+    grid-column: 1 / -1;
+    grid-row: 2;
+    min-height: 54px;
+    margin-top: 16px;
+    padding: 6px 7px 6px 13px;
+  }
+
+  .ai-home-prompt button {
+    width: 42px;
+    height: 42px;
+    border-radius: 13px;
   }
 
   .ai-home-button {
-    padding: 10px 12px;
-    font-size: 12px;
+    grid-column: 1 / -1;
+    grid-row: 3;
+    min-height: 50px;
+    padding: 12px 14px;
+    font-size: 13px;
   }
 
   .home-section-title {
