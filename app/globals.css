@@ -1626,11 +1626,11 @@ svg {
 }
 
 .pet-avatar.vet {
-  width: 170px;
-  height: 170px;
+  width: 195px;
+  height: 195px;
   border: 8px solid rgba(255, 255, 255, 0.1);
-  border-radius: 50px;
-  font-size: 89px;
+  border-radius: 55px;
+  font-size: 96px;
   transform: rotate(2deg);
   box-shadow: 0 28px 70px rgba(0, 0, 0, 0.26);
 }
@@ -4584,41 +4584,95 @@ svg {
   }
 
   .vet24-home-card {
-    min-height: 535px;
-    grid-template-columns: 1fr;
+    display: block;
+    min-height: 410px;
   }
 
   .vet24-home-copy {
-    padding: 23px 22px 0;
+    padding: 19px;
+  }
+
+  .vet24-home-card .home-feature-icon,
+  .vet24-home-card .feature-label {
+    display: none;
+  }
+
+  .online-chip {
+    padding: 6px 9px;
+    font-size: 9px;
   }
 
   .vet24-home-copy h2 {
-    font-size: 52px;
+    max-width: 290px;
+    margin-top: 19px;
+    font-size: 44px;
+    line-height: 0.86;
+  }
+
+  .vet24-home-copy .feature-description {
+    max-width: 58%;
+    margin-top: 11px;
+    font-size: 12px;
+    line-height: 1.4;
   }
 
   .vet24-home-copy > button {
-    margin-top: 20px;
+    max-width: 55%;
+    margin-top: 15px;
+    padding: 11px 13px;
+    font-size: 11px;
   }
 
   .vet24-pet {
-    min-height: 215px;
+    position: absolute;
+    right: 16px;
+    bottom: 18px;
+    min-height: 0;
   }
 
   .pet-avatar.vet {
-    width: 145px;
-    height: 145px;
-    border-radius: 43px;
-    font-size: 75px;
+    width: 185px;
+    height: 185px;
+    border-width: 7px;
+    border-radius: 49px;
+    font-size: 90px;
   }
 
   .doctor-badge {
-    right: 23px;
-    bottom: 24px;
+    right: 2px;
+    bottom: -2px;
+    padding: 7px 9px;
   }
 
   .ai-home-card {
-    min-height: 315px;
-    padding: 21px;
+    min-height: 255px;
+    padding: 18px;
+  }
+
+  .ai-home-card .home-feature-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 13px;
+  }
+
+  .ai-home-card h2 {
+    margin-top: 3px;
+    font-size: 30px;
+  }
+
+  .ai-home-card > div:nth-child(2) > p:last-child {
+    font-size: 12px;
+    line-height: 1.4;
+  }
+
+  .ai-home-prompt {
+    margin-top: 13px;
+    padding: 7px 7px 7px 10px;
+  }
+
+  .ai-home-button {
+    padding: 10px 12px;
+    font-size: 12px;
   }
 
   .home-section-title {
@@ -4921,6 +4975,23 @@ svg {
     overflow-y: auto;
     border-radius: 25px 25px 18px 18px;
     padding: 21px;
+  }
+}
+
+@media (max-width: 390px) {
+  .vet24-home-card {
+    min-height: 445px;
+  }
+
+  .pet-avatar.vet {
+    width: 175px;
+    height: 175px;
+    border-radius: 46px;
+  }
+
+  .vet24-home-copy h2 {
+    max-width: 255px;
+    font-size: 41px;
   }
 }
 
