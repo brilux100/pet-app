@@ -13,7 +13,7 @@ type View =
   | "services"
   | "vet24";
 
-type Modal = "pet" | "editPet" | "visit" | "document" | "premium" | "rewards" | null;
+type Modal = "pet" | "editPet" | "visit" | "document" | "documentView" | "premium" | "rewards" | null;
 
 type Visit = {
   id: string;
@@ -37,6 +37,16 @@ type PetDocument = {
   name: string;
   kind: string;
   date: string;
+  storagePath?: string;
+  fileUrl?: string;
+  fileName?: string;
+  mimeType?: string;
+  fileSize?: number;
+  documentDate?: string;
+  clinic?: string;
+  notes?: string;
+  status?: "confirmed" | "needs_review";
+  visitId?: string;
 };
 
 type Pet = {
@@ -253,6 +263,21 @@ function fileToDataUrl(file: File) {
   });
 }
 
+function safeFileName(name: string) {
+  const parts = name.split(".");
+  const extension = parts.length > 1 ? `.${parts.pop()!.toLowerCase()}` : "";
+  const base = parts.join(".").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
+  return `${base || "dokument"}${extension}`;
+}
+
+function formatFileSize(size?: number) {
+  if (!size) return "Brak informacji";
+  if (size < 1024 * 1024) return `${Math.max(1, Math.round(size / 1024))} KB`;
+  return `${(size / 1024 / 1024).toFixed(1).replace(".", ",")} MB`;
+}
+
+const documentCategories = ["Zdrowie", "Badania", "Szczepienia", "Leki", "Paszport i chip", "Ubezpieczenie", "Usługi", "Zakupy", "Inne"];
+
 function petEmoji(species: string) {
   const value = species.toLowerCase();
   if (value.includes("kot")) return "🐱";
@@ -384,6 +409,15 @@ function petFromRow(row: Record<string, any>): Pet {
       name: String(item.name),
       kind: String(item.kind),
       date: new Date(String(item.created_at)).toLocaleDateString("pl-PL"),
+      storagePath: item.storage_path ? String(item.storage_path) : undefined,
+      fileName: item.file_name ? String(item.file_name) : undefined,
+      mimeType: item.mime_type ? String(item.mime_type) : undefined,
+      fileSize: item.file_size ? Number(item.file_size) : undefined,
+      documentDate: item.document_date ? String(item.document_date) : undefined,
+      clinic: item.clinic ? String(item.clinic) : undefined,
+      notes: item.notes ? String(item.notes) : undefined,
+      status: item.status === "needs_review" ? "needs_review" : "confirmed",
+      visitId: item.visit_id ? String(item.visit_id) : undefined,
     })),
   };
 }
@@ -415,6 +449,9 @@ export default function PupilCareApp({ supabase, userId, userEmail, onSignOut }:
   const [careCloudReady, setCareCloudReady] = useState(!authenticated);
   const [rewardMessage, setRewardMessage] = useState("");
   const [levelUpNotice, setLevelUpNotice] = useState<{ title: string; reward: number } | null>(null);
+  const [selectedDocument, setSelectedDocument] = useState<PetDocument | null>(null);
+  const [visitDefaults, setVisitDefaults] = useState<{ type: string; title: string; place: string; documentId?: string } | null>(null);
+  const [documentSaving, setDocumentSaving] = useState(false);
 
   useEffect(() => {
     if (authenticated) return;
@@ -508,9 +545,17 @@ export default function PupilCareApp({ supabase, userId, userEmail, onSignOut }:
       } else {
         const loaded = await Promise.all((petsResult.data || []).map(async (row) => {
           const mapped = petFromRow(row as Record<string, any>);
-          if (!mapped.photoPath) return mapped;
-          const signed = await supabase!.storage.from("pet-photos").createSignedUrl(mapped.photoPath, 60 * 60 * 24);
-          return { ...mapped, photoUrl: signed.data?.signedUrl };
+          let photoUrl: string | undefined;
+          if (mapped.photoPath) {
+            const signedPhoto = await supabase!.storage.from("pet-photos").createSignedUrl(mapped.photoPath, 60 * 60 * 24);
+            photoUrl = signedPhoto.data?.signedUrl;
+          }
+          const documents = await Promise.all(mapped.documents.map(async (document) => {
+            if (!document.storagePath) return document;
+            const signedFile = await supabase!.storage.from("pet-documents").createSignedUrl(document.storagePath, 60 * 60 * 24);
+            return { ...document, fileUrl: signedFile.data?.signedUrl };
+          }));
+          return { ...mapped, photoUrl, documents };
         }));
         setPets(loaded);
         if (loaded.length) setActivePetId(loaded[0].id);
@@ -840,37 +885,121 @@ export default function PupilCareApp({ supabase, userId, userEmail, onSignOut }:
         setDataError("Nie udało się zapisać wizyty.");
         return;
       }
+      if (visitDefaults?.documentId) {
+        const linked = await supabase.from("documents").update({ visit_id: visit.id }).eq("id", visitDefaults.documentId).eq("owner_id", userId);
+        if (linked.error) console.error("PupilCare document reminder link failed", linked.error);
+      }
     }
-    updatePet({ ...pet, visits: [visit, ...pet.visits] });
+    updatePet({
+      ...pet,
+      visits: [visit, ...pet.visits],
+      documents: visitDefaults?.documentId
+        ? pet.documents.map((document) => document.id === visitDefaults.documentId ? { ...document, visitId: visit.id } : document)
+        : pet.documents,
+    });
     setModal(null);
+    setVisitDefaults(null);
     setView("calendar");
   };
 
   const addDocument = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    setDataError("");
     const data = new FormData(event.currentTarget);
+    const fileEntry = data.get("file");
+    const file = fileEntry instanceof File && fileEntry.size > 0 ? fileEntry : null;
+    if (!file) {
+      setDataError("Wybierz plik PDF albo zdjęcie dokumentu.");
+      return;
+    }
+    const allowedTypes = ["application/pdf", "image/jpeg", "image/png", "image/webp"];
+    if (!allowedTypes.includes(file.type)) {
+      setDataError("Ten format nie jest obsługiwany. Wybierz PDF, JPG, PNG lub WEBP.");
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setDataError("Plik jest za duży. Maksymalny rozmiar to 10 MB.");
+      return;
+    }
+    setDocumentSaving(true);
     const document: PetDocument = {
       id: authenticated ? crypto.randomUUID() : createId("document"),
       name: String(data.get("name") || "Nowy dokument"),
       kind: String(data.get("kind") || "Inne"),
       date: new Date().toLocaleDateString("pl-PL"),
+      fileName: file.name,
+      mimeType: file.type,
+      fileSize: file.size,
+      documentDate: String(data.get("documentDate") || "") || undefined,
+      clinic: String(data.get("clinic") || "") || undefined,
+      notes: String(data.get("notes") || "") || undefined,
+      status: data.get("documentDate") ? "confirmed" : "needs_review",
     };
+    try {
+      if (authenticated && supabase && userId) {
+        const storagePath = `${userId}/${pet.id}/${document.id}/${safeFileName(file.name)}`;
+        const uploaded = await supabase.storage.from("pet-documents").upload(storagePath, file, {
+          cacheControl: "3600",
+          contentType: file.type,
+          upsert: false,
+        });
+        if (uploaded.error) {
+          console.error("PupilCare document upload failed", uploaded.error);
+          setDataError("Nie udało się przesłać pliku. Upewnij się, że migracja dokumentów została uruchomiona.");
+          return;
+        }
+        document.storagePath = storagePath;
+        const { error } = await supabase.from("documents").insert({
+          id: document.id,
+          owner_id: userId,
+          pet_id: pet.id,
+          name: document.name,
+          kind: document.kind,
+          storage_path: storagePath,
+          file_name: document.fileName,
+          mime_type: document.mimeType,
+          file_size: document.fileSize,
+          document_date: document.documentDate || null,
+          clinic: document.clinic || null,
+          notes: document.notes || null,
+          status: document.status,
+        });
+        if (error) {
+          await supabase.storage.from("pet-documents").remove([storagePath]);
+          console.error("PupilCare document insert failed", error);
+          setDataError("Nie udało się zapisać danych dokumentu. Uruchom przygotowaną migrację w Supabase.");
+          return;
+        }
+        const signed = await supabase.storage.from("pet-documents").createSignedUrl(storagePath, 60 * 60 * 24);
+        document.fileUrl = signed.data?.signedUrl;
+      } else {
+        document.fileUrl = await fileToDataUrl(file);
+      }
+      updatePet({ ...pet, documents: [document, ...pet.documents] });
+      setModal(null);
+      setView("documents");
+    } catch (error) {
+      console.error("PupilCare document save failed", error);
+      setDataError("Nie udało się dodać dokumentu. Spróbuj ponownie.");
+    } finally {
+      setDocumentSaving(false);
+    }
+  };
+
+  const deleteDocument = async (document: PetDocument) => {
+    if (!window.confirm(`Usunąć dokument „${document.name}”? Tej operacji nie można cofnąć.`)) return;
+    setDataError("");
     if (authenticated && supabase && userId) {
-      const { error } = await supabase.from("documents").insert({
-        id: document.id,
-        owner_id: userId,
-        pet_id: pet.id,
-        name: document.name,
-        kind: document.kind,
-      });
+      const { error } = await supabase.from("documents").delete().eq("id", document.id).eq("owner_id", userId);
       if (error) {
-        setDataError("Nie udało się zapisać dokumentu.");
+        setDataError("Nie udało się usunąć dokumentu.");
         return;
       }
+      if (document.storagePath) await supabase.storage.from("pet-documents").remove([document.storagePath]);
     }
-    updatePet({ ...pet, documents: [document, ...pet.documents] });
+    updatePet({ ...pet, documents: pet.documents.filter((item) => item.id !== document.id) });
+    setSelectedDocument(null);
     setModal(null);
-    setView("documents");
   };
 
   const completeCareTask = async (taskId: string) => {
@@ -1142,8 +1271,8 @@ export default function PupilCareApp({ supabase, userId, userEmail, onSignOut }:
             pet={pet}
             nextVisit={nextVisit}
             onView={changeView}
-            onVisit={() => setModal("visit")}
-            onDocument={() => setModal("document")}
+            onVisit={() => { setVisitDefaults(null); setModal("visit"); }}
+            onDocument={() => { setDataError(""); setModal("document"); }}
             onVet24={() => changeView("vet24")}
             tasks={todaysTasks}
             checkin={todaysCheckin}
@@ -1154,9 +1283,15 @@ export default function PupilCareApp({ supabase, userId, userEmail, onSignOut }:
           />
         )}
         {view === "profile" && <Profile pet={pet} onEdit={() => { setDataError(""); setModal("editPet"); }} />}
-        {view === "health" && <Health pet={pet} onDocument={() => setModal("document")} />}
-        {view === "calendar" && <CalendarView pet={pet} onAdd={() => setModal("visit")} />}
-        {view === "documents" && <Documents pet={pet} onAdd={() => setModal("document")} />}
+        {view === "health" && <Health pet={pet} onDocument={() => { setDataError(""); setModal("document"); }} />}
+        {view === "calendar" && <CalendarView pet={pet} onAdd={() => { setVisitDefaults(null); setModal("visit"); }} />}
+        {view === "documents" && (
+          <Documents
+            pet={pet}
+            onAdd={() => { setDataError(""); setModal("document"); }}
+            onOpen={(document) => { setDataError(""); setSelectedDocument(document); setModal("documentView"); }}
+          />
+        )}
         {view === "ai" && (
           <AiAssistant
             pet={pet}
@@ -1219,15 +1354,15 @@ export default function PupilCareApp({ supabase, userId, userEmail, onSignOut }:
       )}
 
       {modal === "visit" && (
-        <ModalShell title="Dodaj wizytę" subtitle={"Nowe wydarzenie dla " + pet.name} onClose={() => setModal(null)}>
+        <ModalShell title="Dodaj wizytę" subtitle={"Nowe wydarzenie dla " + pet.name} onClose={() => { setVisitDefaults(null); setModal(null); }}>
           <form className="form-grid" onSubmit={addVisit}>
-            <SelectField label="Typ wizyty" name="type" options={["Weterynarz", "Groomer", "Hotel", "Przypomnienie"]} />
-            <Field label="Tytuł" name="title" placeholder="np. Kontrola" required />
+            <SelectField label="Typ wizyty" name="type" options={["Weterynarz", "Groomer", "Hotel", "Przypomnienie"]} defaultValue={visitDefaults?.type} />
+            <Field label="Tytuł" name="title" placeholder="np. Kontrola" required defaultValue={visitDefaults?.title} />
             <Field label="Data" name="date" type="date" required />
             <Field label="Godzina" name="time" type="time" />
-            <Field label="Miejsce" name="place" placeholder="Nazwa i adres" full />
+            <Field label="Miejsce lub notatka" name="place" placeholder="Nazwa i adres" full defaultValue={visitDefaults?.place} />
             <div className="form-actions full">
-              <button type="button" className="secondary-button" onClick={() => setModal(null)}>Anuluj</button>
+              <button type="button" className="secondary-button" onClick={() => { setVisitDefaults(null); setModal(null); }}>Anuluj</button>
               <button type="submit" className="primary-button">Zapisz wizytę</button>
             </div>
           </form>
@@ -1238,18 +1373,41 @@ export default function PupilCareApp({ supabase, userId, userEmail, onSignOut }:
         <ModalShell title="Dodaj dokument" subtitle={"Dokument zostanie zapisany w profilu " + pet.name} onClose={() => setModal(null)}>
           <form className="form-grid" onSubmit={addDocument}>
             <Field label="Nazwa dokumentu" name="name" placeholder="np. Wyniki badania krwi" required full />
-            <SelectField label="Kategoria" name="kind" options={["Zdrowie", "Badania", "Szczepienia", "Ubezpieczenie", "Inne"]} full />
+            <SelectField label="Kategoria" name="kind" options={documentCategories} />
+            <Field label="Data dokumentu" name="documentDate" type="date" />
+            <Field label="Klinika lub wystawca" name="clinic" placeholder="np. Przychodnia Morska" full />
+            <label className="field full"><span>Notatka (opcjonalnie)</span><textarea name="notes" placeholder="Zalecenia, termin ważności albo ważny szczegół" rows={3} /></label>
             <label className="upload-box full">
               <Icon name="file" />
               <strong>Wybierz plik</strong>
-              <span>PDF, JPG lub PNG — do 10 MB</span>
-              <input type="file" accept=".pdf,.jpg,.jpeg,.png" />
+              <span>PDF, JPG, PNG lub WEBP — do 10 MB</span>
+              <input name="file" type="file" accept="application/pdf,image/jpeg,image/png,image/webp" required />
             </label>
+            {dataError && <p className="data-error full">{dataError}</p>}
             <div className="form-actions full">
               <button type="button" className="secondary-button" onClick={() => setModal(null)}>Anuluj</button>
-              <button type="submit" className="primary-button">Dodaj dokument</button>
+              <button type="submit" className="primary-button" disabled={documentSaving}>{documentSaving ? "Zapisujemy…" : "Dodaj dokument"}</button>
             </div>
           </form>
+        </ModalShell>
+      )}
+
+      {modal === "documentView" && selectedDocument && (
+        <ModalShell title={selectedDocument.name} subtitle={`${selectedDocument.kind} · profil ${pet.name}`} onClose={() => { setSelectedDocument(null); setModal(null); }} wide>
+          <DocumentDetails
+            document={selectedDocument}
+            error={dataError}
+            onDelete={() => void deleteDocument(selectedDocument)}
+            onReminder={() => {
+              setVisitDefaults({
+                type: "Przypomnienie",
+                title: `Sprawdź: ${selectedDocument.name}`,
+                place: `Dokumenty · ${selectedDocument.kind}`,
+                documentId: selectedDocument.id,
+              });
+              setModal("visit");
+            }}
+          />
         </ModalShell>
       )}
 
@@ -2001,20 +2159,77 @@ function CalendarView({ pet, onAdd }: { pet: Pet; onAdd: () => void }) {
   );
 }
 
-function Documents({ pet, onAdd }: { pet: Pet; onAdd: () => void }) {
+function Documents({ pet, onAdd, onOpen }: { pet: Pet; onAdd: () => void; onOpen: (document: PetDocument) => void }) {
+  const [query, setQuery] = useState("");
+  const [category, setCategory] = useState("Wszystkie");
+  const attentionCount = pet.documents.filter((document) => document.status === "needs_review" || !document.fileUrl).length;
+  const categories = ["Wszystkie", ...documentCategories.filter((item) => pet.documents.some((document) => document.kind === item))];
+  const filtered = pet.documents.filter((document) => {
+    const matchesCategory = category === "Wszystkie" || document.kind === category;
+    const haystack = `${document.name} ${document.kind} ${document.clinic || ""}`.toLowerCase();
+    return matchesCategory && haystack.includes(query.trim().toLowerCase());
+  });
   return (
     <div className="page">
       <PageTitle eyebrow="Dokumenty" title={"Dokumenty " + pet.name} description="Książeczka zdrowia, wyniki badań i polisy zawsze pod ręką." action="Dodaj dokument" onAction={onAdd} />
+      <section className="document-vault card">
+        <div className="document-vault-intro">
+          <span className="document-vault-icon"><Icon name="shield" /></span>
+          <div><span className="section-kicker">Prywatny sejf</span><h2>Ważne dokumenty w jednym miejscu</h2><p>Pliki są dostępne tylko na Twoim koncie i przypisane do profilu {pet.name}.</p></div>
+        </div>
+        <div className="document-vault-stats">
+          <span><strong>{pet.documents.length}</strong><small>wszystkich</small></span>
+          <span className={attentionCount ? "attention" : ""}><strong>{attentionCount}</strong><small>do uzupełnienia</small></span>
+        </div>
+      </section>
+      <section className="document-toolbar">
+        <label className="document-search"><Icon name="file" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Szukaj po nazwie, kategorii lub klinice" /></label>
+        <div className="document-filters" aria-label="Kategorie dokumentów">
+          {categories.map((item) => <button key={item} className={category === item ? "active" : ""} onClick={() => setCategory(item)}>{item}</button>)}
+        </div>
+      </section>
       <section className="document-grid">
-        {pet.documents.map((document, index) => (
-          <article className="document-card card" key={document.id}>
-            <div className={"document-preview preview-" + ((index % 3) + 1)}><Icon name="file" /><span>PDF</span></div>
-            <div className="document-body"><span>{document.kind}</span><h3>{document.name}</h3><p>Dodano {document.date}</p></div>
-            <button aria-label={"Otwórz " + document.name}><Icon name="arrow" /></button>
+        {filtered.map((document, index) => (
+          <article className="document-card card" key={document.id} role="button" tabIndex={0} onClick={() => onOpen(document)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onOpen(document); }}>
+            <div className={"document-preview preview-" + ((index % 3) + 1)}>
+              {document.fileUrl && document.mimeType?.startsWith("image/") ? <img src={document.fileUrl} alt="" /> : <><Icon name="file" /><span>{document.mimeType === "application/pdf" ? "PDF" : "PLIK"}</span></>}
+              {document.status === "needs_review" && <em>Uzupełnij dane</em>}
+            </div>
+            <div className="document-body"><span>{document.kind}</span><h3>{document.name}</h3><p>{document.documentDate ? formatDate(document.documentDate) : `Dodano ${document.date}`}</p>{document.clinic && <small>{document.clinic}</small>}</div>
+            <button aria-label={"Otwórz " + document.name} onClick={(event) => { event.stopPropagation(); onOpen(document); }}><Icon name="arrow" /></button>
           </article>
         ))}
-        <button className="add-document-card" onClick={onAdd}><span><Icon name="plus" /></span><strong>Dodaj nowy dokument</strong><p>PDF, JPG lub PNG</p></button>
+        <button className="add-document-card" onClick={onAdd}><span><Icon name="plus" /></span><strong>Dodaj nowy dokument</strong><p>PDF, JPG, PNG lub WEBP</p></button>
       </section>
+      {!filtered.length && pet.documents.length > 0 && <div className="document-empty-filter"><Icon name="file" /><strong>Nie znaleźliśmy takiego dokumentu</strong><button onClick={() => { setQuery(""); setCategory("Wszystkie"); }}>Wyczyść filtry</button></div>}
+    </div>
+  );
+}
+
+function DocumentDetails({ document, error, onReminder, onDelete }: { document: PetDocument; error: string; onReminder: () => void; onDelete: () => void }) {
+  const isImage = document.mimeType?.startsWith("image/");
+  const isPdf = document.mimeType === "application/pdf";
+  return (
+    <div className="document-details">
+      <div className="document-viewer">
+        {document.fileUrl && isImage && <img src={document.fileUrl} alt={document.name} />}
+        {document.fileUrl && isPdf && <iframe src={document.fileUrl} title={document.name} />}
+        {(!document.fileUrl || (!isImage && !isPdf)) && <div className="document-no-preview"><Icon name="file" /><strong>{document.fileName || "Brak załączonego pliku"}</strong><span>Podgląd nie jest dostępny</span></div>}
+      </div>
+      <div className="document-meta-grid">
+        <div><span>Kategoria</span><strong>{document.kind}</strong></div>
+        <div><span>Data dokumentu</span><strong>{document.documentDate ? formatDate(document.documentDate) : "Do uzupełnienia"}</strong></div>
+        <div><span>Wystawca</span><strong>{document.clinic || "Nie podano"}</strong></div>
+        <div><span>Plik</span><strong>{document.fileName || "Brak"} · {formatFileSize(document.fileSize)}</strong></div>
+      </div>
+      {document.notes && <div className="document-notes"><span>Notatka</span><p>{document.notes}</p></div>}
+      {document.visitId && <div className="document-linked-reminder"><Icon name="calendar" /><span><strong>Przypomnienie jest zaplanowane</strong><small>Znajdziesz je w zakładce Wizyty.</small></span></div>}
+      {error && <p className="data-error">{error}</p>}
+      <div className="document-detail-actions">
+        <button className="secondary-button" onClick={onReminder}><Icon name="calendar" /> Dodaj przypomnienie</button>
+        {document.fileUrl && <a className="primary-button" href={document.fileUrl} target="_blank" rel="noreferrer" download={document.fileName}><Icon name="file" /> Otwórz lub pobierz</a>}
+        <button className="danger-button" onClick={onDelete}>Usuń</button>
+      </div>
     </div>
   );
 }
@@ -2294,10 +2509,10 @@ function EmptyState({ icon, title, action, onAction }: { icon: IconName; title: 
   return <div className="empty-state"><span><Icon name={icon} /></span><strong>{title}</strong><button onClick={onAction}>{action}</button></div>;
 }
 
-function ModalShell({ title, subtitle, onClose, children }: { title: string; subtitle: string; onClose: () => void; children: React.ReactNode }) {
+function ModalShell({ title, subtitle, onClose, children, wide = false }: { title: string; subtitle: string; onClose: () => void; children: React.ReactNode; wide?: boolean }) {
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label={title}>
-      <div className="modal-card">
+      <div className={wide ? "modal-card modal-card-wide" : "modal-card"}>
         <div className="modal-header"><div><span className="section-kicker">PupilCare</span><h2>{title}</h2><p>{subtitle}</p></div><button aria-label="Zamknij" onClick={onClose}><Icon name="close" /></button></div>
         {children}
       </div>
