@@ -421,7 +421,7 @@ svg {
 
 .top-care-copy small {
   color: #6f847a;
-  font-size: 6px;
+  font-size: 8px;
   font-weight: 900;
   letter-spacing: 0.07em;
   text-transform: uppercase;
@@ -429,7 +429,7 @@ svg {
 
 .top-care-copy strong {
   margin-top: 1px;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .top-care-copy i {
@@ -450,7 +450,7 @@ svg {
 
 .top-care-status em {
   color: #2c8057;
-  font-size: 8px;
+  font-size: 10px;
   font-style: normal;
   font-weight: 950;
   white-space: nowrap;
@@ -986,6 +986,143 @@ svg {
   margin-bottom: 22px;
 }
 
+.daily-care-grid.expanded {
+  margin-top: 14px;
+}
+
+.care-overview-card {
+  display: grid;
+  grid-template-columns: auto minmax(210px, 1fr) minmax(120px, 0.45fr) minmax(230px, 0.8fr) auto;
+  align-items: center;
+  gap: 18px;
+  margin-top: 18px;
+  border: 1px solid rgba(23, 54, 44, 0.08);
+  border-radius: 24px;
+  background: linear-gradient(135deg, #f7fbf7 0%, #ecf8ef 52%, #fff8dd 100%);
+  padding: 17px 18px;
+  box-shadow: 0 13px 34px rgba(38, 60, 50, 0.07);
+}
+
+.care-overview-icon {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  border-radius: 16px;
+  background: #c6ffda;
+  font-size: 22px;
+  box-shadow: inset 0 0 0 1px rgba(23, 54, 44, 0.07);
+}
+
+.care-overview-copy {
+  min-width: 0;
+}
+
+.care-overview-copy .section-kicker {
+  margin-bottom: 4px;
+  color: #3a8b62;
+}
+
+.care-overview-copy h2,
+.care-overview-copy p {
+  margin: 0;
+}
+
+.care-overview-copy h2 {
+  font-size: 17px;
+  font-weight: 900;
+  letter-spacing: -0.035em;
+}
+
+.care-overview-copy p {
+  margin-top: 4px;
+  color: #6b8177;
+  font-size: 11px;
+}
+
+.care-overview-progress {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(23, 54, 44, 0.1);
+}
+
+.care-overview-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #35af72, #80dd9f);
+  transition: width 240ms ease;
+}
+
+.care-next-action {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  border: 0;
+  border-left: 1px solid rgba(23, 54, 44, 0.1);
+  background: transparent;
+  padding: 3px 0 3px 18px;
+  color: var(--ink);
+  text-align: left;
+}
+
+.care-next-action small,
+.care-next-action strong,
+.care-next-action em {
+  display: block;
+}
+
+.care-next-action small {
+  color: #789087;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.care-next-action strong {
+  margin-top: 3px;
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.care-next-action em {
+  margin-top: 2px;
+  color: #75877f;
+  font-size: 9px;
+  font-style: normal;
+}
+
+.care-next-action svg {
+  width: 15px;
+}
+
+.care-expand-button {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  border: 0;
+  border-radius: 13px;
+  background: var(--ink);
+  padding: 0 14px;
+  color: white;
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.care-expand-button span {
+  font-size: 17px;
+  line-height: 1;
+}
+
 .daily-plan-card,
 .daily-checkin-card {
   border: 1px solid rgba(23, 54, 44, 0.08);
@@ -1145,7 +1282,7 @@ svg {
 
 .task-copy small {
   color: #9fc1b3;
-  font-size: 7px;
+  font-size: 9px;
   font-weight: 850;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1153,7 +1290,7 @@ svg {
 
 .task-copy strong {
   margin-top: 3px;
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .daily-task.completed .task-copy strong {
@@ -1165,7 +1302,7 @@ svg {
   background: rgba(184, 255, 209, 0.12);
   padding: 7px 8px;
   color: #b8ffd1;
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 900;
 }
 
@@ -1366,7 +1503,7 @@ svg {
   background: rgba(255, 255, 255, 0.08);
   padding: 7px 11px;
   color: #c8ffdc;
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 850;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -1405,7 +1542,7 @@ svg {
 .feature-label {
   margin: 18px 0 0;
   color: #9ee9bb;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 850;
   letter-spacing: 0.13em;
   text-transform: uppercase;
@@ -1423,7 +1560,7 @@ svg {
   max-width: 390px;
   margin: 15px 0 0;
   color: #c5d5ce;
-  font-size: 11px;
+  font-size: 14px;
   line-height: 1.55;
 }
 
@@ -1437,7 +1574,7 @@ svg {
   background: #c6ffda;
   padding: 13px 16px;
   color: var(--ink);
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 900;
   transition: 160ms ease;
 }
@@ -1547,7 +1684,7 @@ svg {
 .ai-home-card > div:nth-child(2) > p:last-child {
   margin: 0;
   color: #695d76;
-  font-size: 10px;
+  font-size: 13px;
   line-height: 1.55;
 }
 
@@ -1565,7 +1702,7 @@ svg {
 
 .ai-home-prompt > span {
   color: #746987;
-  font-size: 9px;
+  font-size: 12px;
   font-style: italic;
 }
 
@@ -1595,7 +1732,7 @@ svg {
   background: #765aa8;
   padding: 12px 14px;
   color: white;
-  font-size: 9px;
+  font-size: 13px;
   font-weight: 850;
   transition: 160ms ease;
 }
@@ -1614,7 +1751,7 @@ svg {
 
 .home-section-title h2 {
   margin: 0;
-  font-size: 24px;
+  font-size: 28px;
   font-weight: 900;
   letter-spacing: -0.045em;
 }
@@ -1626,7 +1763,7 @@ svg {
   border: 0;
   background: transparent;
   color: #687d73;
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 850;
 }
 
@@ -1747,7 +1884,7 @@ svg {
 .ecosystem-copy em {
   overflow: hidden;
   color: rgba(23, 54, 44, 0.72);
-  font-size: 8px;
+  font-size: 10px;
   font-style: normal;
   font-weight: 900;
   letter-spacing: 0.11em;
@@ -1758,7 +1895,7 @@ svg {
 
 .ecosystem-copy strong {
   margin-top: 9px;
-  font-size: 19px;
+  font-size: 22px;
   font-weight: 900;
   letter-spacing: -0.035em;
 }
@@ -1767,7 +1904,7 @@ svg {
   max-width: 220px;
   margin-top: 7px;
   color: rgba(23, 54, 44, 0.67);
-  font-size: 10px;
+  font-size: 13px;
   line-height: 1.5;
 }
 
@@ -1787,7 +1924,7 @@ svg {
   background: rgba(255, 255, 255, 0.64);
   padding: 0 14px;
   color: var(--ink);
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 900;
   box-shadow: 0 8px 18px rgba(23, 54, 44, 0.07);
   backdrop-filter: blur(8px);
@@ -3090,7 +3227,7 @@ svg {
 
 .rewards-balance small {
   color: #aac8bc;
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 800;
   text-transform: uppercase;
 }
@@ -3104,7 +3241,7 @@ svg {
 .rewards-balance em {
   max-width: 135px;
   color: #bcd1c9;
-  font-size: 8px;
+  font-size: 11px;
   font-style: normal;
   line-height: 1.45;
   text-align: right;
@@ -3152,7 +3289,7 @@ svg {
 
 .care-level-copy small {
   color: #5a796b;
-  font-size: 7px;
+  font-size: 9px;
   font-weight: 900;
   letter-spacing: 0.09em;
   text-transform: uppercase;
@@ -3160,7 +3297,7 @@ svg {
 
 .care-level-copy strong {
   margin-top: 2px;
-  font-size: 12px;
+  font-size: 15px;
 }
 
 .care-level-copy > div {
@@ -3181,7 +3318,7 @@ svg {
 .care-level-copy em {
   margin-top: 6px;
   color: #668077;
-  font-size: 7px;
+  font-size: 10px;
   font-style: normal;
 }
 
@@ -3217,13 +3354,13 @@ svg {
 
 .reward-card h3 {
   margin: 0;
-  font-size: 11px;
+  font-size: 14px;
 }
 
 .reward-card p {
   margin: 3px 0 0;
   color: #75867e;
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .reward-card button {
@@ -3232,7 +3369,7 @@ svg {
   background: var(--ink);
   padding: 9px 11px;
   color: white;
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 900;
 }
 
@@ -3245,7 +3382,7 @@ svg {
 .rewards-note {
   margin: 0;
   color: #87958e;
-  font-size: 8px;
+  font-size: 10px;
   line-height: 1.45;
   text-align: center;
 }
@@ -4010,6 +4147,23 @@ svg {
     grid-template-columns: 1fr;
   }
 
+  .care-overview-card {
+    grid-template-columns: auto minmax(220px, 1fr) minmax(110px, 0.4fr) auto;
+  }
+
+  .care-next-action {
+    grid-column: 2 / 4;
+    grid-row: 2;
+    border-top: 1px solid rgba(23, 54, 44, 0.1);
+    border-left: 0;
+    padding: 13px 0 0;
+  }
+
+  .care-expand-button {
+    grid-column: 4;
+    grid-row: 2;
+  }
+
   .top-care-status {
     min-width: 210px;
   }
@@ -4111,7 +4265,7 @@ svg {
     background: transparent;
     padding: 7px 3px;
     color: #75877f;
-    font-size: 7px;
+    font-size: 9px;
     font-weight: 800;
   }
 
@@ -4132,6 +4286,24 @@ svg {
   .home-feature-grid,
   .home-summary-grid {
     grid-template-columns: 1fr;
+  }
+
+  .care-overview-card {
+    grid-template-columns: auto 1fr auto;
+  }
+
+  .care-overview-progress {
+    grid-column: 2 / -1;
+  }
+
+  .care-next-action {
+    grid-column: 2;
+    grid-row: 3;
+  }
+
+  .care-expand-button {
+    grid-column: 3;
+    grid-row: 3;
   }
 
   .vet24-home-card {
@@ -4278,6 +4450,48 @@ svg {
     margin-bottom: 14px;
   }
 
+  .daily-care-grid.expanded {
+    margin-top: 11px;
+  }
+
+  .care-overview-card {
+    grid-template-columns: auto 1fr;
+    gap: 13px;
+    margin-top: 13px;
+    border-radius: 22px;
+    padding: 17px;
+  }
+
+  .care-overview-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 14px;
+  }
+
+  .care-overview-copy h2 {
+    font-size: 16px;
+  }
+
+  .care-overview-progress {
+    grid-column: 1 / -1;
+  }
+
+  .care-next-action {
+    grid-column: 1 / -1;
+    grid-row: auto;
+    padding-top: 13px;
+  }
+
+  .care-next-action strong {
+    white-space: normal;
+  }
+
+  .care-expand-button {
+    grid-column: 1 / -1;
+    grid-row: auto;
+    width: 100%;
+  }
+
   .daily-plan-card,
   .daily-checkin-card {
     border-radius: 23px;
@@ -4397,7 +4611,7 @@ svg {
   }
 
   .home-section-title h2 {
-    font-size: 21px;
+    font-size: 25px;
   }
 
   .home-section-title > button {
