@@ -4656,11 +4656,11 @@ svg {
   }
 
   .pet-avatar.vet {
-    width: clamp(165px, 45vw, 175px);
-    height: clamp(165px, 45vw, 175px);
+    width: clamp(190px, 52vw, 205px);
+    height: clamp(190px, 52vw, 205px);
     border-width: 7px;
-    border-radius: 50px;
-    font-size: 92px;
+    border-radius: 54px;
+    font-size: 98px;
   }
 
   .doctor-badge {
@@ -5014,6 +5014,14 @@ svg {
   .vet24-home-copy h2 {
     max-width: 255px;
     font-size: 41px;
+  }
+}
+
+@media (max-width: 340px) {
+  .pet-avatar.vet {
+    width: 170px;
+    height: 170px;
+    border-radius: 48px;
   }
 }
 
