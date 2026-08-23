@@ -13,7 +13,7 @@ type View =
   | "services"
   | "vet24";
 
-type Modal = "pet" | "visit" | "document" | "premium" | "rewards" | null;
+type Modal = "pet" | "editPet" | "visit" | "document" | "premium" | "rewards" | null;
 
 type Visit = {
   id: string;
@@ -242,6 +242,15 @@ const quickPrompts = [
 
 function createId(prefix: string) {
   return prefix + "-" + Date.now() + "-" + Math.random().toString(16).slice(2);
+}
+
+function fileToDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error || new Error("Nie udało się odczytać zdjęcia."));
+    reader.readAsDataURL(file);
+  });
 }
 
 function petEmoji(species: string) {
@@ -717,6 +726,94 @@ export default function PupilCareApp({ supabase, userId, userEmail, onSignOut }:
     });
   };
 
+  const savePetEdits = async (input: NewPetInput) => {
+    const name = input.name.trim();
+    if (!name) {
+      setDataError("Podaj imię pupila.");
+      return false;
+    }
+
+    setDataError("");
+    const previousPhotoPath = pet.photoPath;
+    const nextPet: Pet = {
+      ...pet,
+      name,
+      species: input.species || pet.species,
+      breed: input.breed.trim() || "Nie podano",
+      age: input.age.trim() || "Nie podano",
+      sex: input.sex || "Nie podano",
+      weight: input.weight.trim() || "Nie podano",
+      emoji: petEmoji(input.species || pet.species),
+    };
+
+    if (input.photo) {
+      if (input.photo.size > 8 * 1024 * 1024) {
+        setDataError("Zdjęcie jest za duże. Wybierz plik mniejszy niż 8 MB.");
+        return false;
+      }
+
+      if (authenticated && supabase && userId) {
+        const extension = input.photo.name.split(".").pop()?.toLowerCase() || "jpg";
+        const safeExtension = ["jpg", "jpeg", "png", "webp"].includes(extension) ? extension : "jpg";
+        const photoPath = `${userId}/${pet.id}/avatar.${safeExtension}`;
+        const uploaded = await supabase.storage.from("pet-photos").upload(photoPath, input.photo, {
+          cacheControl: "3600",
+          contentType: input.photo.type || "image/jpeg",
+          upsert: true,
+        });
+        if (uploaded.error) {
+          console.error("PupilCare avatar update failed", uploaded.error);
+          setDataError("Nie udało się przesłać nowego zdjęcia. Spróbuj ponownie.");
+          return false;
+        }
+        const signed = await supabase.storage.from("pet-photos").createSignedUrl(photoPath, 60 * 60 * 24);
+        nextPet.photoPath = photoPath;
+        nextPet.photoUrl = signed.data?.signedUrl || URL.createObjectURL(input.photo);
+      } else {
+        try {
+          nextPet.photoUrl = await fileToDataUrl(input.photo);
+          nextPet.photoPath = undefined;
+        } catch (error) {
+          console.error("PupilCare local avatar update failed", error);
+          setDataError("Nie udało się odczytać zdjęcia. Wybierz inny plik.");
+          return false;
+        }
+      }
+    }
+
+    if (authenticated && supabase && userId) {
+      const { error } = await supabase
+        .from("pets")
+        .update({
+          name: nextPet.name,
+          species: nextPet.species,
+          breed: nextPet.breed,
+          age_label: nextPet.age,
+          sex: nextPet.sex,
+          weight_label: nextPet.weight,
+          emoji: nextPet.emoji,
+          photo_path: nextPet.photoPath || null,
+        })
+        .eq("id", pet.id)
+        .eq("owner_id", userId);
+      if (error) {
+        if (nextPet.photoPath && nextPet.photoPath !== previousPhotoPath) {
+          await supabase.storage.from("pet-photos").remove([nextPet.photoPath]);
+        }
+        console.error("PupilCare pet update failed", error);
+        setDataError("Nie udało się zapisać zmian. Spróbuj ponownie za chwilę.");
+        return false;
+      }
+      if (previousPhotoPath && nextPet.photoPath && previousPhotoPath !== nextPet.photoPath) {
+        await supabase.storage.from("pet-photos").remove([previousPhotoPath]);
+      }
+    }
+
+    updatePet(nextPet);
+    setModal(null);
+    return true;
+  };
+
   const addVisit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
@@ -1056,7 +1153,7 @@ export default function PupilCareApp({ supabase, userId, userEmail, onSignOut }:
             onRewards={() => { setRewardMessage(""); setModal("rewards"); }}
           />
         )}
-        {view === "profile" && <Profile pet={pet} />}
+        {view === "profile" && <Profile pet={pet} onEdit={() => { setDataError(""); setModal("editPet"); }} />}
         {view === "health" && <Health pet={pet} onDocument={() => setModal("document")} />}
         {view === "calendar" && <CalendarView pet={pet} onAdd={() => setModal("visit")} />}
         {view === "documents" && <Documents pet={pet} onAdd={() => setModal("document")} />}
@@ -1112,6 +1209,12 @@ export default function PupilCareApp({ supabase, userId, userEmail, onSignOut }:
               <button type="submit" className="primary-button">Utwórz profil <Icon name="arrow" /></button>
             </div>
           </form>
+        </ModalShell>
+      )}
+
+      {modal === "editPet" && (
+        <ModalShell title={`Edytuj profil ${pet.name}`} subtitle="Zmień dane lub wybierz nowe zdjęcie profilowe" onClose={() => setModal(null)}>
+          <EditPetForm pet={pet} error={dataError} onSubmit={savePetEdits} onCancel={() => setModal(null)} />
         </ModalShell>
       )}
 
@@ -1718,7 +1821,73 @@ function FirstPetSetup({
   );
 }
 
-function Profile({ pet }: { pet: Pet }) {
+function EditPetForm({
+  pet,
+  error,
+  onSubmit,
+  onCancel,
+}: {
+  pet: Pet;
+  error?: string;
+  onSubmit: (input: NewPetInput) => Promise<boolean>;
+  onCancel: () => void;
+}) {
+  const [photo, setPhoto] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!photo) {
+      setPhotoPreview("");
+      return;
+    }
+    const url = URL.createObjectURL(photo);
+    setPhotoPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [photo]);
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    setSaving(true);
+    await onSubmit({
+      name: String(data.get("name") || ""),
+      species: String(data.get("species") || pet.species),
+      breed: String(data.get("breed") || ""),
+      age: String(data.get("age") || ""),
+      sex: String(data.get("sex") || pet.sex),
+      weight: String(data.get("weight") || ""),
+      photo,
+    });
+    setSaving(false);
+  };
+
+  const preview = photoPreview || pet.photoUrl;
+
+  return (
+    <form className="form-grid edit-pet-form" onSubmit={submit}>
+      <label className="edit-pet-photo full">
+        <input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => setPhoto(event.target.files?.[0] || null)} />
+        <span className="edit-pet-preview" style={{ background: pet.color }}>{preview ? <img src={preview} alt={pet.name} /> : pet.emoji}</span>
+        <span className="edit-pet-photo-copy"><strong>{photo ? photo.name : "Zmień zdjęcie profilowe"}</strong><small>Kliknij, aby wybrać JPG, PNG lub WEBP · maks. 8 MB</small></span>
+        <span className="edit-pet-photo-action"><Icon name="plus" /> Wybierz</span>
+      </label>
+      <Field label="Imię pupila" name="name" defaultValue={pet.name} required />
+      <SelectField label="Gatunek" name="species" options={["Pies", "Kot", "Królik", "Gryzoń", "Ptak", "Gad", "Koń", "Inny"]} defaultValue={pet.species} />
+      <Field label="Rasa" name="breed" defaultValue={pet.breed === "Nie podano" ? "" : pet.breed} placeholder="np. Beagle" />
+      <Field label="Wiek lub data urodzenia" name="age" defaultValue={pet.age === "Nie podano" ? "" : pet.age} placeholder="np. 2 lata" />
+      <SelectField label="Płeć" name="sex" options={["Samica", "Samiec", "Nie wiem"]} defaultValue={pet.sex === "Nie podano" ? "Nie wiem" : pet.sex} />
+      <Field label="Waga" name="weight" defaultValue={pet.weight === "Nie podano" ? "" : pet.weight} placeholder="np. 8,5 kg" />
+      {error && <p className="data-error full">{error}</p>}
+      <div className="form-actions full">
+        <button type="button" className="secondary-button" onClick={onCancel}>Anuluj</button>
+        <button type="submit" className="primary-button" disabled={saving}>{saving ? "Zapisujemy…" : "Zapisz zmiany"} <Icon name="arrow" /></button>
+      </div>
+    </form>
+  );
+}
+
+function Profile({ pet, onEdit }: { pet: Pet; onEdit: () => void }) {
   const details = [
     ["Gatunek", pet.species],
     ["Rasa", pet.breed],
@@ -1732,7 +1901,10 @@ function Profile({ pet }: { pet: Pet }) {
       <PageTitle eyebrow="Profil pupila" title={"Poznaj " + pet.name} description="Dane identyfikacyjne i najważniejsze informacje o pupilu." />
       <section className="profile-grid">
         <article className="profile-card card">
-          <PetAvatar pet={pet} className="profile" />
+          <div className="profile-avatar-editor">
+            <PetAvatar pet={pet} className="profile" />
+            <button type="button" onClick={onEdit}><Icon name="plus" /> Zmień zdjęcie</button>
+          </div>
           <span className="live-chip"><span /> Profil aktywny</span>
           <h2>{pet.name}</h2>
           <p>{pet.species} · {pet.breed}</p>
@@ -1743,7 +1915,7 @@ function Profile({ pet }: { pet: Pet }) {
           </div>
         </article>
         <article className="card detail-card">
-          <div className="section-title"><div><span className="section-kicker">Dane podstawowe</span><h2>Informacje</h2></div><button>Edytuj</button></div>
+          <div className="section-title"><div><span className="section-kicker">Dane podstawowe</span><h2>Informacje</h2></div><button onClick={onEdit}>Edytuj profil</button></div>
           <div className="detail-list">
             {details.map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}
           </div>
@@ -2133,12 +2305,12 @@ function ModalShell({ title, subtitle, onClose, children }: { title: string; sub
   );
 }
 
-function Field({ label, name, placeholder, type = "text", required = false, full = false }: { label: string; name: string; placeholder?: string; type?: string; required?: boolean; full?: boolean }) {
-  return <label className={full ? "field full" : "field"}><span>{label}</span><input name={name} type={type} placeholder={placeholder} required={required} /></label>;
+function Field({ label, name, placeholder, type = "text", required = false, full = false, defaultValue }: { label: string; name: string; placeholder?: string; type?: string; required?: boolean; full?: boolean; defaultValue?: string }) {
+  return <label className={full ? "field full" : "field"}><span>{label}</span><input name={name} type={type} placeholder={placeholder} required={required} defaultValue={defaultValue} /></label>;
 }
 
-function SelectField({ label, name, options, full = false }: { label: string; name: string; options: string[]; full?: boolean }) {
-  return <label className={full ? "field full" : "field"}><span>{label}</span><select name={name}>{options.map((option) => <option key={option}>{option}</option>)}</select></label>;
+function SelectField({ label, name, options, full = false, defaultValue }: { label: string; name: string; options: string[]; full?: boolean; defaultValue?: string }) {
+  return <label className={full ? "field full" : "field"}><span>{label}</span><select name={name} defaultValue={defaultValue}>{options.map((option) => <option key={option}>{option}</option>)}</select></label>;
 }
 
 function Icon({ name }: { name: IconName }) {
