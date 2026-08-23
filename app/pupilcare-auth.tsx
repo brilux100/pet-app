@@ -95,6 +95,7 @@ export default function PupilCareAuth() {
       supabase={client}
       userId={session.user.id}
       userEmail={session.user.email ?? undefined}
+      accessToken={session.access_token}
       onSignOut={() => client.auth.signOut()}
     />
   );
