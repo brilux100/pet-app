@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 type View =
@@ -49,6 +49,8 @@ type Pet = {
   weight: string;
   emoji: string;
   color: string;
+  photoPath?: string;
+  photoUrl?: string;
   healthScore: number;
   allergies: string;
   medications: string;
@@ -57,6 +59,16 @@ type Pet = {
   vaccines: Vaccine[];
   visits: Visit[];
   documents: PetDocument[];
+};
+
+type NewPetInput = {
+  name: string;
+  species: string;
+  breed: string;
+  age: string;
+  sex: string;
+  weight: string;
+  photo?: File | null;
 };
 
 type PupilCareAppProps = {
@@ -255,6 +267,7 @@ function petFromRow(row: Record<string, any>): Pet {
     weight: String(row.weight_label || "Nie podano"),
     emoji: String(row.emoji || petEmoji(String(row.species))),
     color: String(row.color || "#dff6ff"),
+    photoPath: row.photo_path ? String(row.photo_path) : undefined,
     healthScore: Number(row.health_score || 72),
     allergies: String(row.allergies || "Nie uzupełniono"),
     medications: String(row.medications || "Nie uzupełniono"),
@@ -350,7 +363,7 @@ export default function PupilCareApp({ supabase, userId, userEmail, onSignOut }:
     async function loadAccount() {
       setDataLoading(true);
       setDataError("");
-      await supabase!.from("profiles").upsert(
+      const profileUpsert = await supabase!.from("profiles").upsert(
         { id: userId, email: userEmail ?? null },
         { onConflict: "id" },
       );
@@ -360,12 +373,19 @@ export default function PupilCareApp({ supabase, userId, userEmail, onSignOut }:
       ]);
       if (!mounted) return;
       if (petsResult.error) {
-        setDataError("Nie udało się pobrać profili pupili. Sprawdź konfigurację bazy Supabase.");
+        console.error("PupilCare pets query failed", petsResult.error);
+        setDataError("Nie udało się teraz połączyć z profilem. Spróbuj odświeżyć stronę za chwilę.");
       } else {
-        const loaded = (petsResult.data || []).map((row) => petFromRow(row as Record<string, any>));
+        const loaded = await Promise.all((petsResult.data || []).map(async (row) => {
+          const mapped = petFromRow(row as Record<string, any>);
+          if (!mapped.photoPath) return mapped;
+          const signed = await supabase!.storage.from("pet-photos").createSignedUrl(mapped.photoPath, 60 * 60 * 24);
+          return { ...mapped, photoUrl: signed.data?.signedUrl };
+        }));
         setPets(loaded);
         if (loaded.length) setActivePetId(loaded[0].id);
       }
+      if (profileUpsert.error) console.error("PupilCare profile upsert failed", profileUpsert.error);
       setIsPremium(profileResult.data?.plan === "premium");
       setDataLoading(false);
     }
@@ -406,21 +426,19 @@ export default function PupilCareApp({ supabase, userId, userEmail, onSignOut }:
     );
   };
 
-  const addPet = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const data = new FormData(event.currentTarget);
-    const species = String(data.get("species") || "Pies");
-    const name = String(data.get("name") || "").trim();
+  const createPet = async (input: NewPetInput) => {
+    const species = input.species || "Pies";
+    const name = input.name.trim();
     if (!name) return;
 
     const newPet: Pet = {
       id: authenticated ? crypto.randomUUID() : createId("pet"),
       name,
       species,
-      breed: String(data.get("breed") || "Nie podano"),
-      age: String(data.get("age") || "Nie podano"),
-      sex: String(data.get("sex") || "Nie podano"),
-      weight: String(data.get("weight") || "Nie podano"),
+      breed: input.breed || "Nie podano",
+      age: input.age || "Nie podano",
+      sex: input.sex || "Nie podano",
+      weight: input.weight || "Nie podano",
       emoji: petEmoji(species),
       color: "#dff6ff",
       healthScore: 72,
@@ -434,6 +452,28 @@ export default function PupilCareApp({ supabase, userId, userEmail, onSignOut }:
     };
 
     if (authenticated && supabase && userId) {
+      if (input.photo) {
+        if (input.photo.size > 8 * 1024 * 1024) {
+          setDataError("Zdjęcie jest za duże. Wybierz plik mniejszy niż 8 MB.");
+          return;
+        }
+        const extension = input.photo.name.split(".").pop()?.toLowerCase() || "jpg";
+        const safeExtension = ["jpg", "jpeg", "png", "webp"].includes(extension) ? extension : "jpg";
+        const photoPath = `${userId}/${newPet.id}/avatar.${safeExtension}`;
+        const uploaded = await supabase.storage.from("pet-photos").upload(photoPath, input.photo, {
+          cacheControl: "3600",
+          contentType: input.photo.type || "image/jpeg",
+          upsert: true,
+        });
+        if (uploaded.error) {
+          console.error("PupilCare photo upload failed", uploaded.error);
+          setDataError("Nie udało się przesłać zdjęcia. Wybierz inne zdjęcie lub spróbuj ponownie.");
+          return;
+        }
+        newPet.photoPath = photoPath;
+        newPet.photoUrl = URL.createObjectURL(input.photo);
+      }
+
       const { error } = await supabase.from("pets").insert({
         id: newPet.id,
         owner_id: userId,
@@ -450,9 +490,12 @@ export default function PupilCareApp({ supabase, userId, userEmail, onSignOut }:
         medications: newPet.medications,
         conditions: newPet.conditions,
         veterinarian: newPet.vet,
+        ...(newPet.photoPath ? { photo_path: newPet.photoPath } : {}),
       });
       if (error) {
-        setDataError("Nie udało się utworzyć profilu pupila.");
+        if (newPet.photoPath) await supabase.storage.from("pet-photos").remove([newPet.photoPath]);
+        console.error("PupilCare pet insert failed", error);
+        setDataError("Nie udało się utworzyć profilu. Spróbuj ponownie za chwilę.");
         return;
       }
     }
@@ -461,6 +504,21 @@ export default function PupilCareApp({ supabase, userId, userEmail, onSignOut }:
     setActivePetId(newPet.id);
     setModal(null);
     setView("profile");
+  };
+
+  const addPet = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const photo = data.get("photo");
+    await createPet({
+      name: String(data.get("name") || ""),
+      species: String(data.get("species") || "Pies"),
+      breed: String(data.get("breed") || ""),
+      age: String(data.get("age") || ""),
+      sex: String(data.get("sex") || "Nie wiem"),
+      weight: String(data.get("weight") || ""),
+      photo: photo instanceof File && photo.size ? photo : null,
+    });
   };
 
   const addVisit = async (event: FormEvent<HTMLFormElement>) => {
@@ -592,7 +650,7 @@ export default function PupilCareApp({ supabase, userId, userEmail, onSignOut }:
   }
 
   if (authenticated && pets.length === 0) {
-    return <FirstPetSetup onSubmit={addPet} email={userEmail} error={dataError} onSignOut={onSignOut} />;
+    return <FirstPetSetup onSubmit={createPet} email={userEmail} error={dataError} onSignOut={onSignOut} />;
   }
 
   return (
@@ -615,9 +673,7 @@ export default function PupilCareApp({ supabase, userId, userEmail, onSignOut }:
         </button>
 
         <div className="pet-switcher">
-          <span className="pet-avatar small" style={{ background: pet.color }}>
-            {pet.emoji}
-          </span>
+          <PetAvatar pet={pet} className="small" />
           <label>
             <span>Aktywny profil</span>
             <select value={activePetId} onChange={(event) => setActivePetId(event.target.value)}>
@@ -733,6 +789,7 @@ export default function PupilCareApp({ supabase, userId, userEmail, onSignOut }:
       {modal === "pet" && (
         <ModalShell title="Dodaj pupila" subtitle="Podstawowe dane wystarczą na początek" onClose={() => setModal(null)}>
           <form className="form-grid" onSubmit={addPet}>
+            <label className="upload-box full pet-photo-field"><input name="photo" type="file" accept="image/jpeg,image/png,image/webp" /><Icon name="plus" /><span><strong>Dodaj zdjęcie pupila</strong><small>JPG, PNG lub WEBP · maks. 8 MB</small></span></label>
             <Field label="Imię pupila" name="name" placeholder="np. Figa" required />
             <SelectField label="Gatunek" name="species" options={["Pies", "Kot", "Królik", "Gryzoń", "Ptak", "Gad", "Koń", "Inny"]} />
             <Field label="Rasa" name="breed" placeholder="np. Beagle" />
@@ -892,7 +949,7 @@ function Dashboard({
             </button>
           </div>
           <div className="vet24-pet">
-            <span className="pet-avatar vet" style={{ background: pet.color }}>{pet.emoji}</span>
+            <PetAvatar pet={pet} className="vet" />
             <div className="doctor-badge"><Icon name="cross" /><span><strong>Vet24</strong><em>gotowy do rozmowy</em></span></div>
           </div>
         </article>
@@ -999,32 +1056,151 @@ function FirstPetSetup({
   error,
   onSignOut,
 }: {
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void | Promise<void>;
+  onSubmit: (input: NewPetInput) => void | Promise<void>;
   email?: string;
   error?: string;
   onSignOut?: () => void | Promise<void>;
 }) {
+  const [step, setStep] = useState(1);
+  const [pending, setPending] = useState(false);
+  const [draft, setDraft] = useState<NewPetInput>({
+    name: "",
+    species: "Pies",
+    breed: "",
+    age: "",
+    sex: "Nie wiem",
+    weight: "",
+    photo: null,
+  });
+  const [photoPreview, setPhotoPreview] = useState("");
+
+  useEffect(() => {
+    if (!draft.photo) {
+      setPhotoPreview("");
+      return;
+    }
+    const url = URL.createObjectURL(draft.photo);
+    setPhotoPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [draft.photo]);
+
+  const update = (key: keyof NewPetInput, value: string | File | null) => {
+    setDraft((current) => ({ ...current, [key]: value }));
+  };
+
+  const chooseSpecies = (species: string) => {
+    update("species", species);
+  };
+
+  const next = () => {
+    if (step === 2 && !draft.name.trim()) return;
+    setStep((current) => Math.min(4, current + 1));
+  };
+
+  const finish = async () => {
+    setPending(true);
+    await onSubmit(draft);
+    setPending(false);
+  };
+
+  const onPhoto = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] || null;
+    if (file && file.size > 8 * 1024 * 1024) {
+      event.target.value = "";
+      return;
+    }
+    update("photo", file);
+  };
+
+  const speciesCards = [
+    { value: "Pies", label: "Pies", image: "/onboarding/dog.webp" },
+    { value: "Kot", label: "Kot", image: "/onboarding/cat.webp" },
+    { value: "Królik", label: "Inny pupil", image: "/onboarding/other-pets.webp" },
+  ];
+
   return (
     <main className="first-pet-page">
-      <section className="first-pet-card">
-        <div className="brand auth-brand">
-          <div className="brand-mark">🐾</div>
-          <div><strong>PupilCare</strong><span>{email || "Nowe konto"}</span></div>
+      <section className="onboarding-shell">
+        <header className="onboarding-header">
+          <div className="brand auth-brand">
+            <div className="brand-mark">🐾</div>
+            <div><strong>PupilCare</strong><span>{email || "Nowe konto"}</span></div>
+          </div>
+          {onSignOut && <button className="onboarding-signout" onClick={() => void onSignOut()}>Wyloguj się</button>}
+        </header>
+
+        <div className="onboarding-progress" aria-label={`Krok ${step} z 4`}>
+          <div><span style={{ width: `${step * 25}%` }} /></div>
+          <strong>{step} / 4</strong>
         </div>
-        <span className="auth-eyebrow">Pierwszy krok</span>
-        <h1>Kogo będziemy wspólnie otaczać opieką?</h1>
-        <p>Podaj tylko podstawowe informacje. Zdrowie, dokumenty i przypomnienia uzupełnisz później.</p>
-        <form className="form-grid first-pet-form" onSubmit={onSubmit}>
-          <Field label="Imię pupila" name="name" placeholder="np. Figa" required />
-          <SelectField label="Gatunek" name="species" options={["Pies", "Kot", "Królik", "Gryzoń", "Ptak", "Gad", "Koń", "Inny"]} />
-          <Field label="Rasa" name="breed" placeholder="np. Beagle" />
-          <Field label="Wiek lub data urodzenia" name="age" placeholder="np. 2 lata" />
-          <SelectField label="Płeć" name="sex" options={["Samica", "Samiec", "Nie wiem"]} />
-          <Field label="Waga" name="weight" placeholder="np. 8,5 kg" />
-          {error && <p className="data-error full">{error}</p>}
-          <button className="primary-button full" type="submit">Utwórz profil pupila <Icon name="arrow" /></button>
-        </form>
-        {onSignOut && <button className="auth-mode" onClick={() => void onSignOut()}>Wyloguj się</button>}
+
+        <div className="onboarding-stage" key={step}>
+          {step === 1 && (
+            <>
+              <div className="onboarding-copy"><span className="auth-eyebrow">Poznajmy się</span><h1>Kim jest Twój pupil?</h1><p>Wybierz zwierzaka. Dopasujemy kolejne pytania i opiekę do jego potrzeb.</p></div>
+              <div className="species-cards">
+                {speciesCards.map((item) => {
+                  const selected = item.value === "Królik"
+                    ? !["Pies", "Kot"].includes(draft.species)
+                    : draft.species === item.value;
+                  return (
+                    <button key={item.label} className={selected ? "species-card selected" : "species-card"} onClick={() => chooseSpecies(item.value)}>
+                      <img src={item.image} alt={item.label} />
+                      <span>{item.label}</span>
+                      <i>{selected ? "✓" : ""}</i>
+                    </button>
+                  );
+                })}
+              </div>
+              {!["Pies", "Kot"].includes(draft.species) && (
+                <label className="onboarding-other-species"><span>Wybierz gatunek</span><select value={draft.species} onChange={(event) => chooseSpecies(event.target.value)}>{["Królik", "Gryzoń", "Ptak", "Gad", "Koń", "Ryba", "Inny"].map((item) => <option key={item}>{item}</option>)}</select></label>
+              )}
+            </>
+          )}
+
+          {step === 2 && (
+            <>
+              <div className="onboarding-copy"><span className="auth-eyebrow">Najważniejsza osoba</span><h1>Jak ma na imię?</h1><p>Dodaj zdjęcie — dzięki niemu profil od razu będzie naprawdę Wasz.</p></div>
+              <div className="name-photo-grid">
+                <label className={photoPreview ? "photo-drop has-photo" : "photo-drop"}>
+                  <input type="file" accept="image/jpeg,image/png,image/webp" onChange={onPhoto} />
+                  {photoPreview ? <img src={photoPreview} alt="Podgląd zdjęcia pupila" /> : <><span>{petEmoji(draft.species)}</span><strong>Dodaj zdjęcie</strong><small>JPG, PNG lub WEBP · do 8 MB</small></>}
+                  {photoPreview && <b>Zmień zdjęcie</b>}
+                </label>
+                <label className="onboarding-name"><span>Imię pupila</span><input autoFocus value={draft.name} onChange={(event) => update("name", event.target.value)} placeholder="np. Figa" /><small>{draft.name.trim() ? `Miło Cię poznać, ${draft.name.trim()}!` : "Wpisz imię, aby przejść dalej"}</small></label>
+              </div>
+            </>
+          )}
+
+          {step === 3 && (
+            <>
+              <div className="onboarding-copy"><span className="auth-eyebrow">Jeszcze chwila</span><h1>Opowiedz nam trochę o {draft.name || "pupilu"}</h1><p>Nie musisz znać wszystkich odpowiedzi. Brakujące dane uzupełnisz później.</p></div>
+              <div className="onboarding-fields">
+                <label><span>Rasa</span><input value={draft.breed} onChange={(event) => update("breed", event.target.value)} placeholder={draft.species === "Kot" ? "np. Europejski krótkowłosy" : "np. Beagle"} /></label>
+                <label><span>Wiek lub data urodzenia</span><input value={draft.age} onChange={(event) => update("age", event.target.value)} placeholder="np. 2 lata" /></label>
+                <label><span>Płeć</span><select value={draft.sex} onChange={(event) => update("sex", event.target.value)}><option>Nie wiem</option><option>Samica</option><option>Samiec</option></select></label>
+                <label><span>Waga</span><input value={draft.weight} onChange={(event) => update("weight", event.target.value)} placeholder="np. 8,5 kg" /></label>
+              </div>
+            </>
+          )}
+
+          {step === 4 && (
+            <>
+              <div className="onboarding-copy centered"><span className="auth-eyebrow">Gotowe</span><h1>Witaj w PupilCare, {draft.name}!</h1><p>Za chwilę otworzymy osobisty profil i pokażemy najważniejsze kolejne kroki.</p></div>
+              <div className="pet-review-card">
+                <span className="review-photo" style={{ background: "#dff6ff" }}>{photoPreview ? <img src={photoPreview} alt={draft.name} /> : petEmoji(draft.species)}</span>
+                <div><strong>{draft.name}</strong><p>{draft.species}{draft.breed ? ` · ${draft.breed}` : ""}</p><small>{[draft.age, draft.sex !== "Nie wiem" ? draft.sex : "", draft.weight].filter(Boolean).join(" · ") || "Dane uzupełnisz później"}</small></div>
+                <i>✓</i>
+              </div>
+              {error && <p className="data-error onboarding-error">{error}</p>}
+            </>
+          )}
+        </div>
+
+        <footer className="onboarding-actions">
+          {step > 1 ? <button className="onboarding-back" onClick={() => setStep((current) => current - 1)}>← Wstecz</button> : <span />}
+          {step < 4 ? <button className="primary-button" disabled={step === 2 && !draft.name.trim()} onClick={next}>Dalej <Icon name="arrow" /></button> : <button className="primary-button" disabled={pending} onClick={() => void finish()}>{pending ? "Tworzymy profil…" : "Otwórz PupilCare"} <Icon name="arrow" /></button>}
+        </footer>
       </section>
     </main>
   );
@@ -1044,7 +1220,7 @@ function Profile({ pet }: { pet: Pet }) {
       <PageTitle eyebrow="Profil pupila" title={"Poznaj " + pet.name} description="Dane identyfikacyjne i najważniejsze informacje o pupilu." />
       <section className="profile-grid">
         <article className="profile-card card">
-          <span className="pet-avatar profile" style={{ background: pet.color }}>{pet.emoji}</span>
+          <PetAvatar pet={pet} className="profile" />
           <span className="live-chip"><span /> Profil aktywny</span>
           <h2>{pet.name}</h2>
           <p>{pet.species} · {pet.breed}</p>
@@ -1227,7 +1403,7 @@ function AiAssistant({
         </article>
         <aside className="ai-side">
           <article className="context-card card">
-            <span className="pet-avatar medium" style={{ background: pet.color }}>{pet.emoji}</span>
+            <PetAvatar pet={pet} className="medium" />
             <span className="section-kicker">Kontekst rozmowy</span><h3>{pet.name}</h3>
             <div><span>Wiek</span><strong>{pet.age}</strong></div>
             <div><span>Waga</span><strong>{pet.weight}</strong></div>
@@ -1311,7 +1487,7 @@ function Vet24({
           <label className="flow-field"><span>Opisz objawy</span><textarea value={symptoms} onChange={(event) => setSymptoms(event.target.value)} placeholder="Co zauważyłeś? Jak zmieniło się zachowanie pupila?" /></label>
           <label className="flow-field"><span>Jak długo to trwa?</span><input value={duration} onChange={(event) => setDuration(event.target.value)} placeholder="np. od rana, od dwóch dni" /></label>
           <div className="intake-profile">
-            <span className="pet-avatar small" style={{ background: pet.color }}>{pet.emoji}</span>
+            <PetAvatar pet={pet} className="small" />
             <div><strong>{pet.name}</strong><small>{pet.species} · {pet.age} · {pet.weight}</small></div>
             <em>Profil dołączony</em>
           </div>
@@ -1346,7 +1522,7 @@ function Vet24({
       {step === "call" && (
         <section className="video-consultation">
           <div className="doctor-video"><span>👩‍⚕️</span><div><strong>lek. wet. Anna Kowalska</strong><small>Weterynarz PupilCare · połączono</small></div></div>
-          <div className="pet-video" style={{ background: pet.color }}><span>{pet.emoji}</span><small>Ty i {pet.name}</small></div>
+          <div className="pet-video" style={{ background: pet.color }}>{pet.photoUrl ? <img src={pet.photoUrl} alt={pet.name} /> : <span>{pet.emoji}</span>}<small>Ty i {pet.name}</small></div>
           <div className="video-controls"><button>🎙️</button><button>📹</button><button className="hangup" onClick={saveSummary}>Zakończ rozmowę</button></div>
         </section>
       )}
@@ -1415,6 +1591,14 @@ function PageTitle({
       <div><p className="eyebrow">{eyebrow}</p><h1>{title}</h1><p>{description}</p></div>
       {action && <button className="primary-button" onClick={onAction}><Icon name="plus" /> {action}</button>}
     </div>
+  );
+}
+
+function PetAvatar({ pet, className = "" }: { pet: Pet; className?: string }) {
+  return (
+    <span className={`pet-avatar ${className}`.trim()} style={{ background: pet.color }}>
+      {pet.photoUrl ? <img src={pet.photoUrl} alt={pet.name} /> : pet.emoji}
+    </span>
   );
 }
 
