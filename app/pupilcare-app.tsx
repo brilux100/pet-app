@@ -109,6 +109,7 @@ type PupilCareAppProps = {
   supabase?: SupabaseClient;
   userId?: string;
   userEmail?: string;
+  accessToken?: string;
   onSignOut?: () => void | Promise<void>;
 };
 
@@ -117,6 +118,7 @@ type ChatMessage = {
   role: "user" | "assistant";
   text: string;
   cta?: "premium" | "vet24";
+  petId?: string;
 };
 
 type IconName =
@@ -245,6 +247,7 @@ const bottomNavigation: { id: View; label: string; icon: IconName }[] = [
 ];
 
 const quickPrompts = [
+  "Przeanalizuj profil i historię Bruno",
   "Bruno nie je od rana",
   "Drapie się częściej niż zwykle",
   "Jak przygotować się do szczepienia?",
@@ -323,6 +326,10 @@ function todayKey() {
   return new Date(now.getTime() - offset).toISOString().slice(0, 10);
 }
 
+function monthKey() {
+  return `${todayKey().slice(0, 7)}-01`;
+}
+
 function recordId(prefix: string, authenticated = false) {
   if (authenticated && typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
   return createId(prefix);
@@ -341,18 +348,6 @@ function dailyTasksForPet(pet: Pet, authenticated = false): CareTask[] {
     { id: recordId("care-activity", authenticated), petId: pet.id, taskKey: "activity", title: activity, category: "Aktywność", xp: 10, scheduledFor: date, status: "pending" },
     { id: recordId("care-training", authenticated), petId: pet.id, taskKey: "training", title: training, category: "Rozwój i relacja", xp: 15, scheduledFor: date, status: "pending" },
   ];
-}
-
-function isPetTopic(question: string, petName: string) {
-  const text = question.toLowerCase();
-  const petWords = [
-    petName.toLowerCase(), "pies", "psa", "psu", "kot", "kota", "pupil", "zwierz",
-    "je", "pije", "karma", "karmi", "wymiot", "biegun", "drapie", "skóra", "sierść",
-    "łapa", "ucho", "oczy", "ząb", "zęby", "szczep", "lek", "weterynar", "groom",
-    "spacer", "zachowanie", "trening", "odrobacz", "kleszcz", "pchł", "ból", "apat",
-    "kaszel", "oddech", "temperatur", "waga", "alerg", "stolec", "mocz", "opieka",
-  ];
-  return petWords.some((word) => text.includes(word));
 }
 
 function isUrgentPetQuestion(question: string) {
@@ -422,7 +417,7 @@ function petFromRow(row: Record<string, any>): Pet {
   };
 }
 
-export default function PupilCareApp({ supabase, userId, userEmail, onSignOut }: PupilCareAppProps = {}) {
+export default function PupilCareApp({ supabase, userId, userEmail, accessToken, onSignOut }: PupilCareAppProps = {}) {
   const authenticated = Boolean(supabase && userId);
   const [view, setView] = useState<View>("home");
   const [modal, setModal] = useState<Modal>(null);
@@ -435,10 +430,11 @@ export default function PupilCareApp({ supabase, userId, userEmail, onSignOut }:
     {
       id: "hello",
       role: "assistant",
-      text: "Cześć! Znam profil Bruna i jego historię zdrowia. Opisz, co się dzieje, a pomogę uporządkować kolejne kroki.",
+      text: "Cześć! Mogę przeanalizować profil pupila i jego historię opieki. Napisz, co chcesz sprawdzić.",
     },
   ]);
   const [chatInput, setChatInput] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
   const [aiUsed, setAiUsed] = useState(0);
   const [isPremium, setIsPremium] = useState(false);
   const [careTasks, setCareTasks] = useState<CareTask[]>(() => demoPets.flatMap((item) => dailyTasksForPet(item)));
@@ -529,7 +525,7 @@ export default function PupilCareApp({ supabase, userId, userEmail, onSignOut }:
         { onConflict: "id" },
       );
       const date = todayKey();
-      const [petsResult, profileResult, tasksResult, checkinsResult, ledgerResult, xpLedgerResult, redemptionsResult] = await Promise.all([
+      const [petsResult, profileResult, tasksResult, checkinsResult, ledgerResult, xpLedgerResult, redemptionsResult, aiUsageResult, aiHistoryResult] = await Promise.all([
         supabase!.from("pets").select("*, vaccines(*), visits(*), documents(*)").order("created_at"),
         supabase!.from("profiles").select("plan").eq("id", userId).maybeSingle(),
         supabase!.from("care_tasks").select("*").eq("scheduled_for", date).order("created_at"),
@@ -537,6 +533,8 @@ export default function PupilCareApp({ supabase, userId, userEmail, onSignOut }:
         supabase!.from("reward_ledger").select("amount"),
         supabase!.from("care_xp_ledger").select("amount"),
         supabase!.from("reward_redemptions").select("reward_code").eq("status", "available"),
+        supabase!.from("ai_usage_monthly").select("conversations").eq("owner_id", userId).eq("month", monthKey()).maybeSingle(),
+        supabase!.from("ai_messages").select("id, pet_id, role, content, urgency, created_at").order("created_at", { ascending: false }).limit(80),
       ]);
       if (!mounted) return;
       if (petsResult.error) {
@@ -562,6 +560,16 @@ export default function PupilCareApp({ supabase, userId, userEmail, onSignOut }:
       }
       if (profileUpsert.error) console.error("PupilCare profile upsert failed", profileUpsert.error);
       setIsPremium(profileResult.data?.plan === "premium");
+      if (!aiUsageResult.error) setAiUsed(Number(aiUsageResult.data?.conversations || 0));
+      if (!aiHistoryResult.error && aiHistoryResult.data?.length) {
+        setChat([...aiHistoryResult.data].reverse().map((row: Record<string, any>) => ({
+          id: String(row.id),
+          petId: row.pet_id ? String(row.pet_id) : undefined,
+          role: row.role === "user" ? "user" : "assistant",
+          text: String(row.content),
+          cta: row.urgency === "emergency" || row.urgency === "vet_soon" ? "vet24" : undefined,
+        })));
+      }
       const careReady = !tasksResult.error && !checkinsResult.error && !ledgerResult.error && !xpLedgerResult.error && !redemptionsResult.error;
       setCareCloudReady(careReady);
       if (careReady) {
@@ -1078,20 +1086,21 @@ export default function PupilCareApp({ supabase, userId, userEmail, onSignOut }:
     setRewardMessage(`Gotowe — ${reward.title} czeka w Twoich nagrodach.`);
   };
 
-  const askAi = (text?: string) => {
+  const askAi = async (text?: string) => {
     const question = (text || chatInput).trim();
-    if (!question) return;
+    if (!question || aiLoading) return;
     const urgent = isUrgentPetQuestion(question);
     const hasAiReward = claimedRewards.includes("ai_chat");
 
-    if (!isPetTopic(question, pet.name)) {
+    if (!authenticated || !accessToken) {
       setChat((current) => [
         ...current,
-        { id: createId("user"), role: "user", text: question },
+        { id: createId("user"), role: "user", text: question, petId: pet.id },
         {
           id: createId("assistant"),
           role: "assistant",
-          text: "Jestem asystentem PupilCare i pomagam wyłącznie w sprawach związanych z Twoim pupilem. Zapytaj mnie o zdrowie, żywienie, zachowanie, pielęgnację lub opiekę nad " + pet.name + ".",
+          petId: pet.id,
+          text: "Prawdziwy AI Asystent analizuje dane zapisane na koncie. Zaloguj się, aby porozmawiać ze mną o " + pet.name + ".",
         },
       ]);
       setChatInput("");
@@ -1103,44 +1112,56 @@ export default function PupilCareApp({ supabase, userId, userEmail, onSignOut }:
       return;
     }
 
-    const lower = question.toLowerCase();
-    let answer =
-      "Zapisz, od kiedy trwa objaw i czy zmieniły się apetyt, pragnienie lub zachowanie. Jeśli stan się pogarsza, skontaktuj się z weterynarzem.";
-    let cta: ChatMessage["cta"] = "premium";
-    if (urgent) {
-      answer =
-        "To może być stan nagły. Nie czekaj na kolejną odpowiedź AI: przejdź do Vet 24/7 albo natychmiast zadzwoń do najbliższej całodobowej kliniki. Jeśli możesz, przygotuj informację o czasie wystąpienia objawów, lekach i możliwych toksynach.";
-      cta = "vet24";
-    } else if (lower.includes("nie je")) {
-      answer =
-        "Brak apetytu przez kilka godzin nie zawsze oznacza nagły problem, ale obserwuj " + pet.name + ". Zapewnij wodę i nie podawaj ludzkich leków. Jeśli nie je ponad 24 godziny, wymiotuje, jest apatyczny albo ma wzdęty brzuch — pilnie skontaktuj się z weterynarzem.";
-      cta = "vet24";
-    } else if (lower.includes("drapie")) {
-      answer =
-        "Sprawdź skórę, uszy i sierść: zaczerwienienie, ranki, pasożyty lub nowy kosmetyk mogą być ważną wskazówką. Zrób zdjęcie zmiany i umów konsultację, jeśli świąd trwa dłużej niż 1–2 dni lub pojawią się rany.";
-    } else if (lower.includes("szczep")) {
-      answer =
-        "Przed szczepieniem " + pet.name + " powinien czuć się dobrze. Zabierz książeczkę zdrowia, listę leków i informację o ostatnim odrobaczeniu. Po szczepieniu zaplanuj spokojniejszy dzień i obserwuj samopoczucie.";
-    }
-    if (!isPremium && !urgent) {
-      if (aiUsed < FREE_AI_LIMIT) {
-        setAiUsed((current) => current + 1);
-      } else if (hasAiReward) {
+    const userMessage: ChatMessage = { id: createId("user"), role: "user", text: question, petId: pet.id };
+    const history = chat.filter((message) => !message.petId || message.petId === pet.id).slice(-12).map((message) => ({ role: message.role, text: message.text }));
+    setChat((current) => [...current, userMessage]);
+    setChatInput("");
+    setAiLoading(true);
+    try {
+      const response = await fetch("/api/ai-chat", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ question, activePetId: pet.id, history, useReward: hasAiReward }),
+      });
+      const result = await response.json() as {
+        answer?: string;
+        urgency?: "emergency" | "vet_soon" | "routine";
+        remaining?: number;
+        usedReward?: boolean;
+        error?: string;
+      };
+      if (response.status === 429) {
+        setModal("premium");
+        setChat((current) => [...current, { id: createId("assistant"), role: "assistant", petId: pet.id, text: result.error || "Wykorzystano bezpłatny limit rozmów. W Premium możesz kontynuować analizę historii pupila.", cta: "premium" }]);
+        return;
+      }
+      if (!response.ok || !result.answer) throw new Error(result.error || "AI request failed");
+      const cta: ChatMessage["cta"] = result.urgency === "emergency" || result.urgency === "vet_soon" ? "vet24" : !isPremium ? "premium" : undefined;
+      setChat((current) => [...current, { id: createId("assistant"), role: "assistant", petId: pet.id, text: result.answer!, cta }]);
+      if (typeof result.remaining === "number" && !isPremium) setAiUsed(Math.max(0, FREE_AI_LIMIT - result.remaining));
+      if (result.usedReward) {
         setClaimedRewards((current) => {
           const index = current.indexOf("ai_chat");
           return index < 0 ? current : current.filter((_, itemIndex) => itemIndex !== index);
         });
-        if (authenticated && supabase && careCloudReady) {
-          void supabase.rpc("use_pupil_reward", { p_reward_code: "ai_chat" });
-        }
       }
+    } catch (error) {
+      console.error("PupilCare AI request failed", error);
+      setChat((current) => [...current, {
+        id: createId("assistant"),
+        role: "assistant",
+        petId: pet.id,
+        text: urgent
+          ? "To może być stan nagły. Nie czekaj na AI — skontaktuj się z najbliższą całodobową kliniką albo przejdź do Vet 24/7."
+          : "Nie udało mi się teraz połączyć z AI. Spróbuj ponownie za chwilę.",
+        cta: urgent ? "vet24" : undefined,
+      }]);
+    } finally {
+      setAiLoading(false);
     }
-    setChat((current) => [
-      ...current,
-      { id: createId("user"), role: "user", text: question },
-      { id: createId("assistant"), role: "assistant", text: answer, cta },
-    ]);
-    setChatInput("");
   };
 
   const finishVet24 = (summary: string) => {
@@ -1295,7 +1316,7 @@ export default function PupilCareApp({ supabase, userId, userEmail, onSignOut }:
         {view === "ai" && (
           <AiAssistant
             pet={pet}
-            messages={chat}
+            messages={chat.filter((message) => !message.petId || message.petId === pet.id)}
             input={chatInput}
             setInput={setChatInput}
             onAsk={askAi}
@@ -1303,6 +1324,8 @@ export default function PupilCareApp({ supabase, userId, userEmail, onSignOut }:
             onPremium={() => setModal("premium")}
             remaining={Math.max(0, FREE_AI_LIMIT - aiUsed) + claimedRewards.filter((code) => code === "ai_chat").length}
             isPremium={isPremium}
+            loading={aiLoading}
+            accountPetCount={pets.length}
           />
         )}
         {view === "services" && <Services pet={pet} onVet24={() => changeView("vet24")} />}
@@ -2244,6 +2267,8 @@ function AiAssistant({
   onPremium,
   remaining,
   isPremium,
+  loading,
+  accountPetCount,
 }: {
   pet: Pet;
   messages: ChatMessage[];
@@ -2254,10 +2279,12 @@ function AiAssistant({
   onPremium: () => void;
   remaining: number;
   isPremium: boolean;
+  loading: boolean;
+  accountPetCount: number;
 }) {
   return (
     <div className="page ai-page">
-      <PageTitle eyebrow="AI Asystent" title={"Zapytaj o " + pet.name} description="Odpowiedzi uwzględniają profil i historię zdrowia pupila." />
+      <PageTitle eyebrow="AI Asystent" title={"Zapytaj o " + pet.name} description="Prawdziwy AI analizuje profil, zdrowie, wizyty, dokumenty i historię opieki zapisaną na koncie." />
       <section className="ai-layout">
         <article className="chat-card card">
           <div className="chat-header">
@@ -2287,18 +2314,19 @@ function AiAssistant({
                 </div>
               </div>
             ))}
+            {loading && <div className="message assistant ai-thinking"><span className="message-avatar"><Icon name="spark" /></span><div className="message-copy"><p>Analizuję profil {pet.name} i historię konta<span className="thinking-dots">…</span></p></div></div>}
           </div>
           <div className="prompt-row">
             {quickPrompts.map((prompt) => {
               const label = prompt.replace("Bruno", pet.name);
-              return <button key={prompt} onClick={() => onAsk(label)}>{label}</button>;
+              return <button key={prompt} disabled={loading} onClick={() => onAsk(label)}>{label}</button>;
             })}
           </div>
           <form className="chat-input" onSubmit={(event) => { event.preventDefault(); onAsk(); }}>
-            <input value={input} onChange={(event) => setInput(event.target.value)} placeholder={"Napisz, co dzieje się z " + pet.name + "..."} />
-            <button aria-label="Wyślij" type="submit"><Icon name="send" /></button>
+            <input value={input} disabled={loading} maxLength={1500} onChange={(event) => setInput(event.target.value)} placeholder={loading ? "AI analizuje dane…" : "Napisz, co dzieje się z " + pet.name + "..."} />
+            <button aria-label="Wyślij" type="submit" disabled={loading || !input.trim()}><Icon name="send" /></button>
           </form>
-          <p className="ai-disclaimer">AI nie zastępuje diagnozy weterynaryjnej. W nagłych przypadkach skontaktuj się z kliniką.</p>
+          <p className="ai-disclaimer">AI nie zastępuje diagnozy weterynaryjnej. Dane profilu są przesyłane do OpenAI wyłącznie w celu przygotowania odpowiedzi. W nagłych przypadkach skontaktuj się z kliniką.</p>
         </article>
         <aside className="ai-side">
           <article className="context-card card">
@@ -2307,6 +2335,8 @@ function AiAssistant({
             <div><span>Wiek</span><strong>{pet.age}</strong></div>
             <div><span>Waga</span><strong>{pet.weight}</strong></div>
             <div><span>Alergie</span><strong>{pet.allergies}</strong></div>
+            <div><span>Historia</span><strong>{pet.visits.length} wizyt · {pet.documents.length} dok.</strong></div>
+            <p className="ai-account-context"><Icon name="shield" /> Analiza chroniona · {accountPetCount} {accountPetCount === 1 ? "pupil na koncie" : "pupile na koncie"}</p>
           </article>
           <article className="vet-urgent">
             <span className="card-icon coral"><Icon name="cross" /></span>
