@@ -1327,8 +1327,8 @@ function Dashboard({
           </div>
           <div className="vet24-pet">
             <PetAvatar pet={pet} className="vet" />
-            <div className="doctor-badge"><Icon name="cross" /><span><strong>Vet24</strong><em>gotowy do rozmowy</em></span></div>
           </div>
+          <div className="doctor-badge"><Icon name="cross" /><span><strong>Vet24</strong><em>gotowy do rozmowy</em></span></div>
         </article>
 
         <article className="ai-home-card">
