@@ -1358,15 +1358,18 @@ function Dashboard({
           <h2>{completedTasks === tasks.length && tasks.length > 0 ? "Plan opieki wykonany" : `${completedTasks} z ${tasks.length} zadań wykonane`}</h2>
           <p>{careLevel.title} · {careXp} XP {checkin ? "· check-in zapisany" : "· check-in czeka"}</p>
         </div>
-        <div className="care-overview-progress" aria-label={`${Math.round(careProgress)}% planu wykonane`}>
-          <span style={{ width: `${careProgress}%` }} />
+        <div className="care-task-actions">
+          <div className="care-overview-progress" aria-label={`${Math.round(careProgress)}% planu wykonane`}>
+            <span style={{ width: `${careProgress}%` }} />
+          </div>
+          <button className="care-expand-button" aria-expanded={careExpanded} onClick={() => setCareExpanded((current) => !current)}>
+            {careExpanded ? "Ukryj zadania" : "Pokaż zadania"} <span>{careExpanded ? "−" : "+"}</span>
+          </button>
         </div>
-        <button className="care-next-action" onClick={() => nextVisit ? onView("calendar") : onVisit()}>
-          <span><small>Następny krok</small><strong>{nextVisit ? nextVisit.title : "Zaplanuj pierwszą wizytę"}</strong><em>{nextVisit ? `${formatDate(nextVisit.date)} · ${nextVisit.time || "godzina do ustalenia"}` : "Dodaj do planu opieki"}</em></span>
+        <button className="care-visit-button" onClick={() => nextVisit ? onView("calendar") : onVisit()}>
+          <span className="care-visit-icon"><Icon name="cross" /></span>
+          <span className="care-visit-copy"><small>Weterynarz</small><strong>{nextVisit ? "Zobacz najbliższą wizytę" : "Umów wizytę"}</strong><em>{nextVisit ? `${formatDate(nextVisit.date)} · ${nextVisit.time || "godzina do ustalenia"}` : "Wybierz klinikę i dogodny termin"}</em></span>
           <Icon name="arrow" />
-        </button>
-        <button className="care-expand-button" aria-expanded={careExpanded} onClick={() => setCareExpanded((current) => !current)}>
-          {careExpanded ? "Ukryj plan" : "Pokaż plan dnia"} <span>{careExpanded ? "−" : "+"}</span>
         </button>
       </section>
 
