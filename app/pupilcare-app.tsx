@@ -226,6 +226,14 @@ const navigation: { id: View; label: string; icon: IconName }[] = [
   { id: "services", label: "Specjaliści", icon: "cross" },
 ];
 
+const bottomNavigation: { id: View; label: string; icon: IconName }[] = [
+  { id: "home", label: "Start", icon: "home" },
+  { id: "services", label: "Usługi", icon: "cross" },
+  { id: "ai", label: "AI", icon: "spark" },
+  { id: "health", label: "Zdrowie", icon: "heart" },
+  { id: "profile", label: "Profil", icon: "paw" },
+];
+
 const quickPrompts = [
   "Bruno nie je od rana",
   "Drapie się częściej niż zwykle",
@@ -1077,7 +1085,7 @@ export default function PupilCareApp({ supabase, userId, userEmail, onSignOut }:
       </section>
 
       <nav className="bottom-nav" aria-label="Nawigacja mobilna">
-        {navigation.slice(0, 5).map((item) => (
+        {bottomNavigation.map((item) => (
           <button
             key={item.id}
             className={view === item.id ? "active" : ""}
@@ -1254,6 +1262,9 @@ function Dashboard({
   onRewards: () => void;
 }) {
   const careLevel = careLevelForXp(careXp);
+  const [careExpanded, setCareExpanded] = useState(false);
+  const completedTasks = tasks.filter((task) => task.status === "completed").length;
+  const careProgress = tasks.length ? (completedTasks / tasks.length) * 100 : 0;
   const services = [
     {
       icon: "cross" as IconName,
@@ -1300,41 +1311,6 @@ function Dashboard({
         <div className="today-chip"><Icon name="calendar" /> Sobota, 22 sierpnia</div>
       </div>
 
-      <section className="daily-care-grid">
-        <article className="daily-plan-card">
-          <div className="daily-plan-head">
-            <div>
-              <span className="section-kicker">Dzisiaj dla {pet.name}</span>
-              <h2>Małe kroki, dobra opieka</h2>
-            </div>
-            <button className="daily-points-button" onClick={onRewards}>Poziom {careLevel.level} · {careXp} XP <Icon name="arrow" /></button>
-          </div>
-          <div className="daily-progress">
-            <div><span style={{ width: `${tasks.length ? (tasks.filter((task) => task.status === "completed").length / tasks.length) * 100 : 0}%` }} /></div>
-            <strong>{tasks.filter((task) => task.status === "completed").length}/{tasks.length} wykonane</strong>
-          </div>
-          <div className="daily-task-list">
-            {tasks.map((task) => (
-              <button
-                key={task.id}
-                className={task.status === "completed" ? "daily-task completed" : "daily-task"}
-                onClick={() => void onCompleteTask(task.id)}
-                disabled={task.status === "completed"}
-              >
-                <span className="task-check">{task.status === "completed" ? "✓" : ""}</span>
-                <span className="task-copy"><small>{task.category}</small><strong>{task.title}</strong></span>
-                <span className="task-points">+{task.xp} XP</span>
-              </button>
-            ))}
-          </div>
-          {tasks.length > 0 && tasks.every((task) => task.status === "completed") && (
-            <div className="daily-complete"><span>🎉</span><div><strong>Plan na dziś wykonany!</strong><small>{pet.name} ma dziś wszystko, czego potrzebuje.</small></div></div>
-          )}
-        </article>
-
-        <DailyCheckinCard pet={pet} existing={checkin} onSave={onCheckin} onOpenAi={() => onView("ai")} />
-      </section>
-
       <section className="home-feature-grid">
         <article className="vet24-home-card">
           <div className="vet24-home-copy">
@@ -1374,6 +1350,62 @@ function Dashboard({
           </button>
         </article>
       </section>
+
+      <section className="care-overview-card">
+        <span className="care-overview-icon">💚</span>
+        <div className="care-overview-copy">
+          <span className="section-kicker">Dzisiaj dla {pet.name}</span>
+          <h2>{completedTasks === tasks.length && tasks.length > 0 ? "Plan opieki wykonany" : `${completedTasks} z ${tasks.length} zadań wykonane`}</h2>
+          <p>{careLevel.title} · {careXp} XP {checkin ? "· check-in zapisany" : "· check-in czeka"}</p>
+        </div>
+        <div className="care-overview-progress" aria-label={`${Math.round(careProgress)}% planu wykonane`}>
+          <span style={{ width: `${careProgress}%` }} />
+        </div>
+        <button className="care-next-action" onClick={() => nextVisit ? onView("calendar") : onVisit()}>
+          <span><small>Następny krok</small><strong>{nextVisit ? nextVisit.title : "Zaplanuj pierwszą wizytę"}</strong><em>{nextVisit ? `${formatDate(nextVisit.date)} · ${nextVisit.time || "godzina do ustalenia"}` : "Dodaj do planu opieki"}</em></span>
+          <Icon name="arrow" />
+        </button>
+        <button className="care-expand-button" aria-expanded={careExpanded} onClick={() => setCareExpanded((current) => !current)}>
+          {careExpanded ? "Ukryj plan" : "Pokaż plan dnia"} <span>{careExpanded ? "−" : "+"}</span>
+        </button>
+      </section>
+
+      {careExpanded && (
+        <section className="daily-care-grid expanded">
+          <article className="daily-plan-card">
+            <div className="daily-plan-head">
+              <div>
+                <span className="section-kicker">Plan dnia</span>
+                <h2>Małe kroki, dobra opieka</h2>
+              </div>
+              <button className="daily-points-button" onClick={onRewards}>Poziom {careLevel.level} · {careXp} XP <Icon name="arrow" /></button>
+            </div>
+            <div className="daily-progress">
+              <div><span style={{ width: `${careProgress}%` }} /></div>
+              <strong>{completedTasks}/{tasks.length} wykonane</strong>
+            </div>
+            <div className="daily-task-list">
+              {tasks.map((task) => (
+                <button
+                  key={task.id}
+                  className={task.status === "completed" ? "daily-task completed" : "daily-task"}
+                  onClick={() => void onCompleteTask(task.id)}
+                  disabled={task.status === "completed"}
+                >
+                  <span className="task-check">{task.status === "completed" ? "✓" : ""}</span>
+                  <span className="task-copy"><small>{task.category}</small><strong>{task.title}</strong></span>
+                  <span className="task-points">+{task.xp} XP</span>
+                </button>
+              ))}
+            </div>
+            {tasks.length > 0 && tasks.every((task) => task.status === "completed") && (
+              <div className="daily-complete"><span>🎉</span><div><strong>Plan na dziś wykonany!</strong><small>{pet.name} ma dziś wszystko, czego potrzebuje.</small></div></div>
+            )}
+          </article>
+
+          <DailyCheckinCard pet={pet} existing={checkin} onSave={onCheckin} onOpenAi={() => onView("ai")} />
+        </section>
+      )}
 
       <div className="home-section-title">
         <div>
