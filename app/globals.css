@@ -968,7 +968,7 @@ svg {
   gap: 7px;
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 13px;
-  background: #fff0af;
+  background: #b8ffd1;
   padding: 10px 12px;
   color: var(--ink);
   font-size: 9px;
@@ -1079,9 +1079,9 @@ svg {
 
 .task-points {
   border-radius: 10px;
-  background: rgba(255, 240, 175, 0.12);
+  background: rgba(184, 255, 209, 0.12);
   padding: 7px 8px;
-  color: #ffeaa1;
+  color: #b8ffd1;
   font-size: 8px;
   font-weight: 900;
 }
@@ -3037,6 +3037,71 @@ svg {
   font-weight: 800;
 }
 
+.care-level-card {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 13px;
+  border: 1px solid #d9e7df;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #f2fbf5, #e7f8ed);
+  padding: 14px;
+}
+
+.care-level-badge {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  border-radius: 16px;
+  background: #b8ffd1;
+  color: var(--ink);
+  font-size: 20px;
+  font-weight: 950;
+  box-shadow: inset 0 0 0 1px rgba(23, 54, 44, 0.08);
+}
+
+.care-level-copy small,
+.care-level-copy strong,
+.care-level-copy em {
+  display: block;
+}
+
+.care-level-copy small {
+  color: #5a796b;
+  font-size: 7px;
+  font-weight: 900;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.care-level-copy strong {
+  margin-top: 2px;
+  font-size: 12px;
+}
+
+.care-level-copy > div {
+  height: 6px;
+  margin-top: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(23, 54, 44, 0.1);
+}
+
+.care-level-copy > div span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #35af72;
+}
+
+.care-level-copy em {
+  margin-top: 6px;
+  color: #668077;
+  font-size: 7px;
+  font-style: normal;
+}
+
 .reward-catalog {
   display: grid;
   gap: 9px;
@@ -3100,6 +3165,32 @@ svg {
   font-size: 8px;
   line-height: 1.45;
   text-align: center;
+}
+
+.reward-rules {
+  border: 1px solid #eadca0;
+  border-radius: 16px;
+  background: #fff9df;
+  padding: 12px 13px;
+}
+
+.verified-chip {
+  display: inline-flex;
+  border-radius: 999px;
+  background: #17362c;
+  padding: 5px 8px;
+  color: white;
+  font-size: 7px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.reward-rules p {
+  margin: 7px 0 0;
+  color: #6e663f;
+  font-size: 8px;
+  line-height: 1.5;
 }
 
 .vet24-status-line {
@@ -4043,7 +4134,7 @@ svg {
   }
 
   .daily-points-button::after {
-    content: "Nagrody";
+    content: "Poziom opieki";
     font-size: 8px;
   }
 
