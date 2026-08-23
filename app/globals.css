@@ -1637,6 +1637,7 @@ svg {
 
 .doctor-badge {
   position: absolute;
+  z-index: 3;
   right: 14px;
   bottom: 35px;
   display: flex;
@@ -4589,7 +4590,15 @@ svg {
   }
 
   .vet24-home-copy {
+    position: static;
     padding: 19px;
+  }
+
+  .vet24-home-copy > .online-chip,
+  .vet24-home-copy > h2,
+  .vet24-home-copy > .feature-description {
+    position: relative;
+    z-index: 3;
   }
 
   .vet24-home-card .home-feature-icon,
@@ -4617,12 +4626,15 @@ svg {
   }
 
   .vet24-home-copy > button {
+    position: absolute;
+    top: 118px;
+    right: 16px;
+    z-index: 4;
     width: 116px;
     min-height: 72px;
     max-width: none;
-    align-self: flex-end;
     justify-content: center;
-    margin-top: -22px;
+    margin: 0;
     border-radius: 18px;
     padding: 12px;
     font-size: 12px;
@@ -4644,18 +4656,18 @@ svg {
   }
 
   .pet-avatar.vet {
-    width: clamp(175px, 47vw, 190px);
-    height: clamp(175px, 47vw, 190px);
+    width: clamp(165px, 45vw, 175px);
+    height: clamp(165px, 45vw, 175px);
     border-width: 7px;
     border-radius: 50px;
     font-size: 92px;
   }
 
   .doctor-badge {
-    right: auto;
-    bottom: 8px;
-    left: calc(100% + 6px);
-    width: 100px;
+    right: 16px;
+    bottom: 16px;
+    left: auto;
+    width: 108px;
     justify-content: center;
     padding: 7px;
   }
