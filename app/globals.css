@@ -1671,6 +1671,73 @@ svg {
   font-style: normal;
 }
 
+@media (min-width: 861px) {
+  .vet24-home-card {
+    min-height: 410px;
+    grid-template-columns: 1.02fr 0.98fr;
+  }
+
+  .vet24-home-copy {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-rows: auto auto auto auto 1fr;
+    align-content: start;
+    column-gap: 14px;
+    padding: 30px 0 30px 32px;
+  }
+
+  .vet24-home-copy > .feature-label {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    margin: 0 0 20px;
+  }
+
+  .vet24-home-copy > .home-feature-icon {
+    grid-column: 1;
+    grid-row: 2;
+    margin: 0;
+  }
+
+  .vet24-home-copy > .online-chip {
+    grid-column: 2;
+    grid-row: 2;
+    align-self: center;
+    justify-self: start;
+  }
+
+  .vet24-home-copy > h2 {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    margin-top: 24px;
+    font-size: clamp(52px, 4.8vw, 70px);
+  }
+
+  .vet24-home-copy > .feature-description {
+    grid-column: 1 / -1;
+    grid-row: 4;
+  }
+
+  .vet24-home-copy > button {
+    grid-column: 1 / -1;
+    grid-row: 5;
+    align-self: end;
+    justify-self: start;
+    margin-top: 22px;
+  }
+
+  .pet-avatar.vet {
+    width: clamp(255px, 24vw, 315px);
+    height: clamp(255px, 24vw, 315px);
+    border-width: 10px;
+    border-radius: 76px;
+  }
+
+  .doctor-badge {
+    right: 18px;
+    bottom: 28px;
+  }
+}
+
 .ai-home-card {
   display: flex;
   flex-direction: column;
