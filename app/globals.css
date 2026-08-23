@@ -4627,8 +4627,9 @@ svg {
 
   .vet24-home-copy > button {
     position: absolute;
-    top: 118px;
+    top: auto;
     right: 16px;
+    bottom: 82px;
     z-index: 4;
     width: 116px;
     min-height: 72px;
