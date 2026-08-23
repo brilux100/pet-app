@@ -258,11 +258,11 @@ const rewardCatalog: { code: RewardCode; title: string; description: string; cos
 ];
 
 const careLevels = [
-  { level: 1, min: 0, title: "Dobry początek" },
-  { level: 2, min: 50, title: "Uważny opiekun" },
-  { level: 3, min: 150, title: "Troskliwy opiekun" },
-  { level: 4, min: 300, title: "Świetny opiekun" },
-  { level: 5, min: 600, title: "Mistrz opieki" },
+  { level: 1, min: 0, title: "Początkujący opiekun", reward: 0 },
+  { level: 2, min: 50, title: "Uważny opiekun", reward: 10 },
+  { level: 3, min: 150, title: "Troskliwy opiekun", reward: 20 },
+  { level: 4, min: 300, title: "Odpowiedzialny opiekun", reward: 30 },
+  { level: 5, min: 600, title: "Wyjątkowy opiekun", reward: 50 },
 ];
 
 function careLevelForXp(xp: number) {
@@ -397,6 +397,7 @@ export default function PupilCareApp({ supabase, userId, userEmail, onSignOut }:
   const [claimedRewards, setClaimedRewards] = useState<RewardCode[]>([]);
   const [careCloudReady, setCareCloudReady] = useState(!authenticated);
   const [rewardMessage, setRewardMessage] = useState("");
+  const [levelUpNotice, setLevelUpNotice] = useState<{ title: string; reward: number } | null>(null);
 
   useEffect(() => {
     if (authenticated) return;
@@ -562,6 +563,23 @@ export default function PupilCareApp({ supabase, userId, userEmail, onSignOut }:
   const nextVisit = useMemo(() => {
     return [...pet.visits].sort((a, b) => a.date.localeCompare(b.date))[0];
   }, [pet.visits]);
+
+  useEffect(() => {
+    if (!levelUpNotice) return;
+    const timer = window.setTimeout(() => setLevelUpNotice(null), 6500);
+    return () => window.clearTimeout(timer);
+  }, [levelUpNotice]);
+
+  const addCareXp = (amount: number) => {
+    const nextXp = careXp + amount;
+    const unlocked = careLevels.filter((level) => level.level > 1 && careXp < level.min && nextXp >= level.min);
+    const levelReward = unlocked.reduce((sum, level) => sum + level.reward, 0);
+    setCareXp(nextXp);
+    if (levelReward > 0) {
+      setVerifiedPoints((current) => current + levelReward);
+      setLevelUpNotice({ title: unlocked[unlocked.length - 1].title, reward: levelReward });
+    }
+  };
 
   useEffect(() => {
     if (dataLoading || !pet?.id || todaysTasks.length) return;
@@ -770,7 +788,7 @@ export default function PupilCareApp({ supabase, userId, userEmail, onSignOut }:
     setCareTasks((current) => current.map((item) => item.id === taskId
       ? { ...item, status: "completed", completedAt }
       : item));
-    setCareXp((current) => current + task.xp);
+    addCareXp(task.xp);
   };
 
   const saveCheckin = async (values: Omit<PetCheckin, "id" | "petId" | "checkedOn">) => {
@@ -802,7 +820,7 @@ export default function PupilCareApp({ supabase, userId, userEmail, onSignOut }:
     setCheckins((current) => existing
       ? current.map((item) => item.id === existing.id ? checkin : item)
       : [...current, checkin]);
-    if (!existing) setCareXp((current) => current + 10);
+    if (!existing) addCareXp(10);
     return true;
   };
 
@@ -960,12 +978,6 @@ export default function PupilCareApp({ supabase, userId, userEmail, onSignOut }:
           ))}
         </nav>
 
-        <button className="points-wallet" onClick={() => { setRewardMessage(""); setModal("rewards"); }}>
-          <span className="points-paw">🐾</span>
-          <span><strong>{verifiedPoints} Łapek</strong><small>Zweryfikowane nagrody</small></span>
-          <Icon name="arrow" />
-        </button>
-
         <div className="sidebar-help">
           <span className="status-dot" />
           <div>
@@ -990,7 +1002,18 @@ export default function PupilCareApp({ supabase, userId, userEmail, onSignOut }:
           </button>
           <div className="mobile-brand">PupilCare</div>
           <div className="top-actions">
-            <button className="mobile-points" onClick={() => setModal("rewards")}>🐾 <strong>{verifiedPoints}</strong></button>
+            <button className="top-care-status" onClick={() => { setRewardMessage(""); setModal("rewards"); }} aria-label={`Poziom opieki ${careLevel.level}: ${careLevel.title}`}>
+              <span className="top-care-level">{careLevel.level}</span>
+              <span className="top-care-copy">
+                <small>Twój poziom opieki</small>
+                <strong>{careLevel.title}</strong>
+                <i><b style={{ width: `${careLevel.progress}%` }} /></i>
+              </span>
+              <em>{careXp} XP</em>
+            </button>
+            <button className="top-points-wallet" onClick={() => { setRewardMessage(""); setModal("rewards"); }} aria-label={`${verifiedPoints} Łapek`}>
+              <span>🐾</span><strong>{verifiedPoints}</strong><small>Łapek</small>
+            </button>
             {onSignOut && <button className="signout-button" onClick={() => void onSignOut()}>Wyloguj</button>}
             <button className="top-action" aria-label="Powiadomienia">
               <Icon name="bell" /><span className="notification-dot" />
@@ -1000,6 +1023,14 @@ export default function PupilCareApp({ supabase, userId, userEmail, onSignOut }:
             </button>
           </div>
         </header>
+
+        {levelUpNotice && (
+          <div className="level-up-toast" role="status">
+            <span>🎉</span>
+            <div><small>Nowy poziom opieki</small><strong>{levelUpNotice.title}</strong><p>Świetna robota! Otrzymujesz +{levelUpNotice.reward} Łapek.</p></div>
+            <button aria-label="Zamknij" onClick={() => setLevelUpNotice(null)}>×</button>
+          </div>
+        )}
 
         {view === "home" && (
           <Dashboard
@@ -1149,22 +1180,22 @@ export default function PupilCareApp({ supabase, userId, userEmail, onSignOut }:
       {modal === "rewards" && (
         <ModalShell
           title="Nagrody PupilCare"
-          subtitle="Wymieniaj Łapki na realne korzyści"
+          subtitle="Twój rozwój i korzyści za dobrą opiekę"
           onClose={() => setModal(null)}
         >
           <div className="rewards-modal">
             <div className="rewards-balance">
               <span>🐾</span>
-              <div><small>Zweryfikowane Łapki</small><strong>{verifiedPoints} Łapek</strong></div>
-              <em>Tylko za potwierdzone działania</em>
+              <div><small>Łapki PupilCare</small><strong>{verifiedPoints} Łapek</strong></div>
+              <em>Za potwierdzone działania i nowe poziomy</em>
             </div>
             <div className="care-level-card">
               <span className="care-level-badge">{careLevel.level}</span>
               <div className="care-level-copy">
-                <small>Poziom opieki</small>
-                <strong>{careLevel.title}</strong>
+                <small>Jak dobrym jesteś opiekunem?</small>
+                <strong>Jesteś: {careLevel.title}</strong>
                 <div><span style={{ width: `${careLevel.progress}%` }} /></div>
-                <em>{careLevel.next ? `${careXp} XP · jeszcze ${careLevel.next.min - careXp} XP do kolejnego poziomu` : `${careXp} XP · najwyższy poziom`}</em>
+                <em>{careLevel.next ? `${careXp} XP · jeszcze ${careLevel.next.min - careXp} XP i otrzymasz +${careLevel.next.reward} Łapek` : `${careXp} XP · osiągnięto najwyższy poziom`}</em>
               </div>
             </div>
             {rewardMessage && <p className="reward-message" role="status">{rewardMessage}</p>}
@@ -1183,8 +1214,9 @@ export default function PupilCareApp({ supabase, userId, userEmail, onSignOut }:
               })}
             </div>
             <div className="reward-rules">
-              <span className="verified-chip">✓ Zweryfikowane</span>
-              <p>Łapki dostaniesz za zakończoną wizytę, konsultację Vet24, opłacone zamówienie lub zadanie potwierdzone przez GPS, zdjęcie albo wideo.</p>
+              <span className="verified-chip">✓ Potwierdzone działania</span>
+              <span className="level-chip">★ Nowy poziom opieki</span>
+              <p>Łapki dostaniesz za zakończoną wizytę, konsultację Vet24, opłacone zamówienie, awans poziomu lub zadanie potwierdzone przez GPS, zdjęcie albo wideo.</p>
             </div>
             <p className="rewards-note">Codzienne kliknięcia budują Poziom opieki i serię dni — nie można wymienić ich na rabaty.</p>
           </div>
