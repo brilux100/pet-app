@@ -4617,15 +4617,18 @@ svg {
   }
 
   .vet24-home-copy > button {
-    width: 104px;
+    width: 116px;
+    min-height: 72px;
     max-width: none;
     align-self: flex-end;
     justify-content: center;
-    margin-top: 0;
-    padding: 10px;
-    font-size: 11px;
+    margin-top: -22px;
+    border-radius: 18px;
+    padding: 12px;
+    font-size: 12px;
     line-height: 1.2;
     text-align: center;
+    box-shadow: 0 12px 25px rgba(11, 40, 31, 0.2);
   }
 
   .vet24-home-copy > button svg {
@@ -4651,8 +4654,8 @@ svg {
   .doctor-badge {
     right: auto;
     bottom: 8px;
-    left: calc(100% - 28px);
-    width: 108px;
+    left: calc(100% + 6px);
+    width: 100px;
     justify-content: center;
     padding: 7px;
   }
